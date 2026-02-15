@@ -1,0 +1,21 @@
+[
+  {
+    "deviceIdentifier": "edge-001",
+    "topic": "automation/edge/edge-001/bearing/vibration_rms",
+    "value": "3.14",
+    "ts": 1735801234,
+    "quality": 0.99
+  },
+  {
+    "deviceIdentifier": "edge-001",
+    "topic": "automation/edge/edge-001/bearing/temperature_c",
+    "value": 72.2,
+    "timestamp": "2026-02-15T10:12:13Z"
+  },
+  {
+    "deviceIdentifier": "edge-002",
+    "topic": "automation/edge/edge-002/bearing/current_rms",
+    "value": 11.4,
+    "timestampMs": 1735801234123
+  }
+]

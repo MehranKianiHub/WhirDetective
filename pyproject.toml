@@ -32,6 +32,11 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.8",
 ]
+data = [
+    "gdown>=5.2",
+    "rarfile>=4.2",
+    "libarchive-c>=5.3",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
