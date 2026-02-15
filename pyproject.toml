@@ -36,6 +36,7 @@ data = [
     "gdown>=5.2",
     "rarfile>=4.2",
     "libarchive-c>=5.3",
+    "scipy>=1.11",
 ]
 
 [tool.setuptools.packages.find]
