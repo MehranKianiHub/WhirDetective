@@ -60,7 +60,7 @@ def build_cwru_canonical_dataset(
     if len(mat_files) < 3:
         raise ValueError("CWRU build requires at least 3 .mat files for train/val/test split")
 
-    selected_files = mat_files if config.max_files is None else mat_files[: config.max_files]
+    selected_files = _select_files_for_build(mat_files, max_files=config.max_files)
     if len(selected_files) < 3:
         raise ValueError("Selected file set must contain at least 3 .mat files")
 
@@ -108,3 +108,29 @@ def build_cwru_canonical_dataset(
         source_files=tuple(source_files),
         fingerprint=dataset_fingerprint(source_files),
     )
+
+
+def _select_files_for_build(mat_files: tuple[Path, ...], *, max_files: int | None) -> tuple[Path, ...]:
+    if max_files is None or max_files >= len(mat_files):
+        return mat_files
+
+    selected = list(mat_files[:max_files])
+    if max_files <= 1:
+        return tuple(selected)
+
+    selected_labels = {infer_cwru_label_from_path(path) for path in selected}
+    if len(selected_labels) >= 2:
+        return tuple(selected)
+
+    first_label = infer_cwru_label_from_path(selected[0])
+    replacement = next(
+        (
+            path
+            for path in mat_files[max_files:]
+            if infer_cwru_label_from_path(path) != first_label
+        ),
+        None,
+    )
+    if replacement is not None:
+        selected[-1] = replacement
+    return tuple(selected)

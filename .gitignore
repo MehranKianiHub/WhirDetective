@@ -28,3 +28,4 @@ data/processed/**
 !data/processed/.gitkeep
 
 outputs/
+artifacts/

@@ -3,12 +3,32 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import cast
 
 import numpy as np
 import numpy.typing as npt
 
 from whirdetective.data.labeling import BearingFaultLabel
+
+_HEALTHY_IDS: frozenset[int] = frozenset({97, 98, 99, 100})
+_INNER_RACE_IDS: frozenset[int] = frozenset(
+    set(range(105, 113))
+    | set(range(169, 178))
+    | set(range(209, 218))
+    | {3001, 3002, 3003, 3004}
+)
+_BALL_IDS: frozenset[int] = frozenset(
+    set(range(118, 126))
+    | set(range(185, 193))
+    | set(range(222, 230))
+    | {3005, 3006, 3007, 3008}
+)
+_OUTER_RACE_IDS: frozenset[int] = frozenset(
+    set(range(130, 139))
+    | set(range(197, 205))
+    | set(range(234, 242))
+)
 
 
 def list_cwru_mat_files(root_dir: str | Path) -> tuple[Path, ...]:
@@ -25,15 +45,27 @@ def list_cwru_mat_files(root_dir: str | Path) -> tuple[Path, ...]:
 def infer_cwru_label_from_path(file_path: str | Path) -> BearingFaultLabel:
     """Infer coarse CWRU label from path tokens when available."""
     path = Path(file_path)
-    haystack = "_".join(part.lower() for part in path.parts)
-    if "normal" in haystack or "healthy" in haystack:
+    tokens = _path_label_tokens(path)
+    if any(token in {"normal", "healthy"} for token in tokens):
         return BearingFaultLabel.HEALTHY
-    if "inner" in haystack or "_ir" in haystack:
+    if any(token == "inner" or token.startswith("ir") for token in tokens):
         return BearingFaultLabel.INNER_RACE
-    if "outer" in haystack or "_or" in haystack:
+    if any(token == "outer" or token.startswith("or") for token in tokens):
         return BearingFaultLabel.OUTER_RACE
-    if "ball" in haystack or "_b" in haystack:
+    if any(token == "ball" or (token.startswith("b") and token[1:].isdigit()) for token in tokens):
         return BearingFaultLabel.BALL
+
+    numeric_id = _extract_numeric_file_id(path)
+    if numeric_id is not None:
+        if numeric_id in _HEALTHY_IDS:
+            return BearingFaultLabel.HEALTHY
+        if numeric_id in _INNER_RACE_IDS:
+            return BearingFaultLabel.INNER_RACE
+        if numeric_id in _BALL_IDS:
+            return BearingFaultLabel.BALL
+        if numeric_id in _OUTER_RACE_IDS:
+            return BearingFaultLabel.OUTER_RACE
+
     return BearingFaultLabel.UNKNOWN
 
 
@@ -79,3 +111,18 @@ def _load_mat_dict(path: Path) -> dict[str, object]:
         ) from exc
     data = loadmat(path, squeeze_me=False, struct_as_record=False)
     return cast(dict[str, object], data)
+
+
+def _path_label_tokens(path: Path) -> tuple[str, ...]:
+    parts = [path.stem.lower(), *(part.lower() for part in path.parent.parts)]
+    tokens: list[str] = []
+    for part in parts:
+        tokens.extend(token for token in re.split(r"[^a-z0-9]+", part) if token)
+    return tuple(tokens)
+
+
+def _extract_numeric_file_id(path: Path) -> int | None:
+    stem = path.stem.strip().lower()
+    if stem.isdigit():
+        return int(stem)
+    return None

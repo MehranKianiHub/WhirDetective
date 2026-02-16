@@ -26,6 +26,9 @@ dependencies = [
     "torch>=2.2",
 ]
 
+[project.scripts]
+whirdetective-step4 = "whirdetective.cli.runner:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=7.4",

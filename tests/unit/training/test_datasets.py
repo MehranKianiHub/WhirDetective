@@ -38,3 +38,23 @@ def test_canonical_samples_to_dataset_shapes_and_mapping() -> None:
 def test_canonical_samples_to_dataset_requires_multiple_classes() -> None:
     with pytest.raises(ValueError, match="at least two classes"):
         canonical_samples_to_dataset((_sample(BearingFaultLabel.HEALTHY, 0.0),))
+
+
+def test_canonical_samples_to_dataset_supports_fixed_class_mapping() -> None:
+    dataset = canonical_samples_to_dataset(
+        (
+            _sample(BearingFaultLabel.HEALTHY, 0.0),
+            _sample(BearingFaultLabel.HEALTHY, 1.0),
+        ),
+        class_to_index={"healthy": 0, "inner_race": 1},
+    )
+    assert dataset.class_names == ("healthy", "inner_race")
+    assert dataset.labels.tolist() == [0, 0]
+
+
+def test_canonical_samples_to_dataset_rejects_unseen_label_for_fixed_mapping() -> None:
+    with pytest.raises(ValueError, match="not present in provided class mapping"):
+        canonical_samples_to_dataset(
+            (_sample(BearingFaultLabel.OUTER_RACE, 0.0),),
+            class_to_index={"healthy": 0, "inner_race": 1},
+        )

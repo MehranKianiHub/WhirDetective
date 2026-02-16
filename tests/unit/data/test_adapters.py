@@ -34,6 +34,18 @@ def test_infer_cwru_label_from_path_tokens() -> None:
     assert infer_cwru_label_from_path("cwru/ball_fault/222.mat") == BearingFaultLabel.BALL
 
 
+def test_infer_cwru_label_from_path_avoids_bootctrl_false_positive() -> None:
+    label = infer_cwru_label_from_path("/home/bootctrl/Projects/WhirDetective/data/raw/cwru/302.mat")
+    assert label == BearingFaultLabel.UNKNOWN
+
+
+def test_infer_cwru_label_from_numeric_ids() -> None:
+    assert infer_cwru_label_from_path("cwru/100.mat") == BearingFaultLabel.HEALTHY
+    assert infer_cwru_label_from_path("cwru/107.mat") == BearingFaultLabel.INNER_RACE
+    assert infer_cwru_label_from_path("cwru/118.mat") == BearingFaultLabel.BALL
+    assert infer_cwru_label_from_path("cwru/130.mat") == BearingFaultLabel.OUTER_RACE
+
+
 def test_load_cwru_channels_extracts_known_signals(tmp_path: Path) -> None:
     mat_path = tmp_path / "100.mat"
     savemat(

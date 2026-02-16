@@ -15,6 +15,13 @@ def test_forward_output_shape() -> None:
     assert y.shape == (8, 4)
 
 
+def test_forward_supports_short_sequence_inputs() -> None:
+    model = BaselineBearingCNN(input_channels=6, num_classes=3)
+    x = torch.randn(4, 6, 5)
+    y = model(x)
+    assert y.shape == (4, 3)
+
+
 def test_invalid_channels_raises() -> None:
     with pytest.raises(ValueError, match="input_channels"):
         BaselineBearingCNN(input_channels=0, num_classes=4)

@@ -9,6 +9,7 @@ import pytest
 from scipy.io import savemat
 
 from whirdetective.data import CwruBuildConfig, build_cwru_canonical_dataset
+from whirdetective.data.adapters import infer_cwru_label_from_path
 from whirdetective.ml import ProjectionPolicy, SensorSetProjector
 
 
@@ -54,3 +55,28 @@ def test_build_cwru_canonical_dataset_requires_enough_files(tmp_path: Path) -> N
 
     with pytest.raises(ValueError, match="at least 3 .mat files"):
         build_cwru_canonical_dataset(config=config, projector=projector)
+
+
+def test_build_cwru_canonical_dataset_max_files_preserves_class_diversity(tmp_path: Path) -> None:
+    (tmp_path / "a_normal").mkdir()
+    (tmp_path / "b_normal").mkdir()
+    (tmp_path / "c_normal").mkdir()
+    (tmp_path / "z_inner").mkdir()
+    _write_cwru_mat(tmp_path / "a_normal" / "100.mat", scale=1.0)
+    _write_cwru_mat(tmp_path / "b_normal" / "101.mat", scale=1.1)
+    _write_cwru_mat(tmp_path / "c_normal" / "102.mat", scale=1.2)
+    _write_cwru_mat(tmp_path / "z_inner" / "201.mat", scale=2.0)
+
+    projector = SensorSetProjector(ProjectionPolicy())
+    config = CwruBuildConfig(
+        root_dir=tmp_path,
+        window_size=8,
+        step_size=4,
+        split_seed=7,
+        max_files=3,
+    )
+    built = build_cwru_canonical_dataset(config=config, projector=projector)
+    labels = {infer_cwru_label_from_path(path).value for path in built.source_files}
+
+    assert len(built.source_files) == 3
+    assert len(labels) >= 2

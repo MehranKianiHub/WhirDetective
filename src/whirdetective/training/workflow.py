@@ -46,10 +46,14 @@ def run_baseline_workflow(
         raise ValueError("split must provide non-empty train/val/test subsets")
 
     train_dataset = canonical_samples_to_dataset(train_samples)
-    val_dataset = canonical_samples_to_dataset(val_samples)
-    test_dataset = canonical_samples_to_dataset(test_samples)
-
-    _assert_class_mapping_consistency(train_dataset, val_dataset, test_dataset)
+    val_dataset = canonical_samples_to_dataset(
+        val_samples,
+        class_to_index=train_dataset.class_to_index,
+    )
+    test_dataset = canonical_samples_to_dataset(
+        test_samples,
+        class_to_index=train_dataset.class_to_index,
+    )
     num_classes = len(train_dataset.class_names)
     input_channels = int(train_dataset.inputs.shape[1])
 
@@ -109,13 +113,3 @@ def run_baseline_workflow(
         val_dataset=val_dataset,
         test_dataset=test_dataset,
     )
-
-
-def _assert_class_mapping_consistency(
-    train_dataset: CanonicalTensorDataset,
-    val_dataset: CanonicalTensorDataset,
-    test_dataset: CanonicalTensorDataset,
-) -> None:
-    expected = train_dataset.class_names
-    if val_dataset.class_names != expected or test_dataset.class_names != expected:
-        raise ValueError("train/val/test class mappings must match")
