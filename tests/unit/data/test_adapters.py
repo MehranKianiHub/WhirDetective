@@ -14,6 +14,10 @@ from whirdetective.data.adapters.cwru import (
     load_cwru_channels,
 )
 from whirdetective.data.adapters.paderborn import list_paderborn_mat_entries
+from whirdetective.data.adapters.paderborn import (
+    infer_paderborn_label_from_archive,
+    list_paderborn_archives,
+)
 from whirdetective.data.labeling import BearingFaultLabel
 
 
@@ -118,6 +122,22 @@ def test_list_paderborn_mat_entries_validates_path(tmp_path: Path) -> None:
     wrong_suffix.write_text("x", encoding="utf-8")
     with pytest.raises(ValueError, match=".rar"):
         list_paderborn_mat_entries(wrong_suffix)
+
+
+def test_list_paderborn_archives_lists_rar_files(tmp_path: Path) -> None:
+    (tmp_path / "K001.rar").write_text("x", encoding="utf-8")
+    (tmp_path / "KA01.rar").write_text("x", encoding="utf-8")
+    (tmp_path / "ignore.txt").write_text("x", encoding="utf-8")
+
+    archives = list_paderborn_archives(tmp_path)
+    assert [path.name for path in archives] == ["K001.rar", "KA01.rar"]
+
+
+def test_infer_paderborn_label_from_archive() -> None:
+    assert infer_paderborn_label_from_archive("K001.rar") == BearingFaultLabel.HEALTHY
+    assert infer_paderborn_label_from_archive("KI14.rar") == BearingFaultLabel.INNER_RACE
+    assert infer_paderborn_label_from_archive("KA08.rar") == BearingFaultLabel.OUTER_RACE
+    assert infer_paderborn_label_from_archive("KB24.rar") == BearingFaultLabel.BALL
 
 
 def test_load_cwru_channels_validates_suffix(tmp_path: Path) -> None:

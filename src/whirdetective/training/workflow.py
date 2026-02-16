@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Mapping
 
 import numpy as np
 import torch
@@ -27,6 +28,9 @@ class BaselineWorkflowResult:
     history: TrainingHistory
     temperature: TemperatureOptimizationResult
     model_card: ModelCard
+    model_state_dict: dict[str, torch.Tensor]
+    model_input_channels: int
+    model_num_classes: int
     train_dataset: CanonicalTensorDataset
     val_dataset: CanonicalTensorDataset
     test_dataset: CanonicalTensorDataset
@@ -65,11 +69,13 @@ def run_baseline_workflow(
     torch.manual_seed(trainer_config.seed)
     model = BaselineBearingCNN(input_channels=input_channels, num_classes=num_classes)
     trainer = BaselineTrainer(model=model, config=trainer_config)
+    class_weights = _compute_balanced_class_weights(train_dataset.labels, num_classes=num_classes)
     history = trainer.fit(
         train_inputs=train_dataset.inputs,
         train_labels=train_dataset.labels,
         val_inputs=val_dataset.inputs,
         val_labels=val_dataset.labels,
+        class_weights=class_weights,
     )
 
     val_logits = trainer.predict_logits(val_dataset.inputs)
@@ -126,6 +132,9 @@ def run_baseline_workflow(
         history=history,
         temperature=temperature,
         model_card=model_card,
+        model_state_dict=_clone_state_dict_cpu(trainer.model.state_dict()),
+        model_input_channels=input_channels,
+        model_num_classes=num_classes,
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         test_dataset=test_dataset,
@@ -189,3 +198,15 @@ def _select_abstention_threshold_from_validation(
         return float(fallback_threshold)
 
     return float(best_threshold)
+
+
+def _clone_state_dict_cpu(state_dict: Mapping[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+    return {name: tensor.detach().cpu().clone() for name, tensor in state_dict.items()}
+
+
+def _compute_balanced_class_weights(labels: torch.Tensor, *, num_classes: int) -> torch.Tensor:
+    counts = torch.bincount(labels.cpu(), minlength=num_classes).to(torch.float32)
+    counts = torch.clamp(counts, min=1.0)
+    weights = counts.sum() / (counts * float(num_classes))
+    weights = weights / weights.mean()
+    return weights

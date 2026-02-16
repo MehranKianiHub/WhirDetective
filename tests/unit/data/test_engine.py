@@ -8,7 +8,12 @@ import numpy as np
 import pytest
 from scipy.io import savemat
 
-from whirdetective.data import CwruBuildConfig, build_cwru_canonical_dataset
+from whirdetective.data import (
+    CwruBuildConfig,
+    PaderbornBuildConfig,
+    build_cwru_canonical_dataset,
+    build_paderborn_canonical_dataset,
+)
 from whirdetective.data.adapters import infer_cwru_label_from_path
 from whirdetective.ml import ProjectionPolicy, SensorSetProjector
 
@@ -103,3 +108,49 @@ def test_build_cwru_canonical_dataset_max_files_preserves_class_diversity(tmp_pa
 
     assert len(built.source_files) == 3
     assert len(labels) >= 2
+
+
+def test_build_paderborn_canonical_dataset_is_deterministic(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    a1 = tmp_path / "K001.rar"
+    a2 = tmp_path / "KI01.rar"
+    a3 = tmp_path / "KA01.rar"
+    for archive in (a1, a2, a3):
+        archive.write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "whirdetective.data.engine.list_paderborn_archives",
+        lambda _root: (a1, a2, a3),
+    )
+    monkeypatch.setattr(
+        "whirdetective.data.engine.list_paderborn_mat_entries",
+        lambda _archive: ("entry_1.mat",),
+    )
+    monkeypatch.setattr(
+        "whirdetective.data.engine.iter_paderborn_mat_payloads",
+        lambda _archive, entry_whitelist=None: (("entry_1.mat", b"dummy"),),
+    )
+    monkeypatch.setattr(
+        "whirdetective.data.engine.load_paderborn_channels_from_mat_payload",
+        lambda payload, min_signal_length, min_length_ratio: {
+            "vibration_1": np.arange(16, dtype=np.float64),
+            "phase_current_1": np.arange(16, dtype=np.float64) + 1.0,
+        },
+    )
+
+    projector = SensorSetProjector(ProjectionPolicy())
+    config = PaderbornBuildConfig(
+        root_dir=tmp_path,
+        window_size=8,
+        step_size=4,
+        split_seed=11,
+    )
+
+    first = build_paderborn_canonical_dataset(config=config, projector=projector)
+    second = build_paderborn_canonical_dataset(config=config, projector=projector)
+    assert len(first.samples) == 9
+    assert first.split == second.split
+    assert first.fingerprint == second.fingerprint
+    assert len(first.source_files) == 3

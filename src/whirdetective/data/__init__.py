@@ -8,7 +8,13 @@ from whirdetective.data.benchmarks import (
     validate_default_benchmarks,
 )
 from whirdetective.data.contracts import CanonicalTrainingSample
-from whirdetective.data.engine import BuiltCanonicalDataset, CwruBuildConfig, build_cwru_canonical_dataset
+from whirdetective.data.engine import (
+    BuiltCanonicalDataset,
+    CwruBuildConfig,
+    PaderbornBuildConfig,
+    build_cwru_canonical_dataset,
+    build_paderborn_canonical_dataset,
+)
 from whirdetective.data.labeling import BearingFaultLabel, normalize_fault_label
 from whirdetective.data.pipeline import build_windowed_canonical_samples
 from whirdetective.data.splitting import GroupedSplit, assert_group_isolation, split_by_group
@@ -21,12 +27,14 @@ __all__ = [
     "BuiltCanonicalDataset",
     "CanonicalTrainingSample",
     "CwruBuildConfig",
+    "PaderbornBuildConfig",
     "DatasetContract",
     "DatasetContractResult",
     "GroupedSplit",
     "assert_group_isolation",
     "build_windowed_canonical_samples",
     "build_cwru_canonical_dataset",
+    "build_paderborn_canonical_dataset",
     "dataset_fingerprint",
     "normalize_fault_label",
     "split_by_group",

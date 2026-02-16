@@ -70,8 +70,16 @@ class BaselineTrainer:
         train_labels: torch.Tensor,
         val_inputs: torch.Tensor,
         val_labels: torch.Tensor,
+        class_weights: torch.Tensor | None = None,
     ) -> TrainingHistory:
         """Run training and return epoch losses."""
+        if class_weights is not None:
+            if class_weights.ndim != 1:
+                raise ValueError("class_weights must be 1D when provided")
+            self._criterion = nn.CrossEntropyLoss(weight=class_weights.to(self._device))
+        else:
+            self._criterion = nn.CrossEntropyLoss()
+
         train_loader = _make_loader(
             train_inputs,
             train_labels,

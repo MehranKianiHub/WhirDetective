@@ -147,6 +147,12 @@ def _dummy_workflow_result(*, pass_kpi: bool) -> BaselineWorkflowResult:
             nll_after=0.55,
         ),
         model_card=card,
+        model_state_dict={
+            "layer.weight": torch.ones((2, 3), dtype=torch.float32),
+            "layer.bias": torch.zeros((2,), dtype=torch.float32),
+        },
+        model_input_channels=3,
+        model_num_classes=2,
         train_dataset=tensor_dataset,
         val_dataset=tensor_dataset,
         test_dataset=tensor_dataset,
@@ -187,9 +193,17 @@ def test_main_writes_reports_and_returns_zero(tmp_path: Path, monkeypatch: objec
     assert (output_dir / "model_card.json").exists()
     assert (output_dir / "kpi_report.json").exists()
     assert (output_dir / "run_report.json").exists()
+    assert (output_dir / "release_gate.json").exists()
+    assert (output_dir / "model_state_dict.pt").exists()
+    assert (output_dir / "inference_config.json").exists()
+    assert (output_dir / "calibration.json").exists()
+    assert (output_dir / "edgeos_model_manifest.json").exists()
+    assert (output_dir / "manifest.json").exists()
 
     kpi_payload = json.loads((output_dir / "kpi_report.json").read_text(encoding="utf-8"))
     assert kpi_payload["evaluation"]["passed"] is True
+    release_payload = json.loads((output_dir / "release_gate.json").read_text(encoding="utf-8"))
+    assert release_payload["evaluation"]["passed"] is True
 
 
 def test_main_returns_one_when_fail_on_kpi_enabled(tmp_path: Path, monkeypatch: object) -> None:
@@ -219,6 +233,113 @@ def test_main_returns_one_when_fail_on_kpi_enabled(tmp_path: Path, monkeypatch: 
             "--output-dir",
             "artifacts/step4-cli-fail",
             "--fail-on-kpi",
+        ]
+    )
+    assert exit_code == 1
+
+
+def test_main_require_signature_fails_without_signing_key(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    workspace_root = tmp_path
+    dataset_root = workspace_root / "data" / "raw" / "cwru"
+    dataset_root.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        runner,
+        "build_cwru_canonical_dataset",
+        lambda *, config, projector: _dummy_built_dataset(),
+    )
+    monkeypatch.setattr(
+        runner,
+        "run_baseline_workflow",
+        lambda *, built_dataset, trainer_config, abstention_threshold, abstention_min_coverage_target: (
+            _dummy_workflow_result(pass_kpi=True)
+        ),
+    )
+
+    exit_code = runner.main(
+        [
+            "--workspace-root",
+            str(workspace_root),
+            "--dataset-root",
+            "data/raw/cwru",
+            "--output-dir",
+            "artifacts/step4-cli-signature-fail",
+            "--require-signature",
+        ]
+    )
+    assert exit_code == 2
+
+
+def test_main_require_signature_succeeds_with_signing_key(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    workspace_root = tmp_path
+    dataset_root = workspace_root / "data" / "raw" / "cwru"
+    dataset_root.mkdir(parents=True)
+
+    monkeypatch.setenv("WHIRDETECTIVE_MANIFEST_SIGNING_KEY", "unit-test-key")
+    monkeypatch.setattr(
+        runner,
+        "build_cwru_canonical_dataset",
+        lambda *, config, projector: _dummy_built_dataset(),
+    )
+    monkeypatch.setattr(
+        runner,
+        "run_baseline_workflow",
+        lambda *, built_dataset, trainer_config, abstention_threshold, abstention_min_coverage_target: (
+            _dummy_workflow_result(pass_kpi=True)
+        ),
+    )
+
+    exit_code = runner.main(
+        [
+            "--workspace-root",
+            str(workspace_root),
+            "--dataset-root",
+            "data/raw/cwru",
+            "--output-dir",
+            "artifacts/step4-cli-signature-ok",
+            "--require-signature",
+        ]
+    )
+    assert exit_code == 0
+    output_dir = workspace_root / "artifacts" / "step4-cli-signature-ok"
+    assert (output_dir / "manifest.sig").exists()
+
+
+def test_main_returns_one_when_fail_on_release_gate_enabled(
+    tmp_path: Path, monkeypatch: object
+) -> None:
+    workspace_root = tmp_path
+    dataset_root = workspace_root / "data" / "raw" / "cwru"
+    dataset_root.mkdir(parents=True)
+
+    monkeypatch.setattr(
+        runner,
+        "build_cwru_canonical_dataset",
+        lambda *, config, projector: _dummy_built_dataset(),
+    )
+    monkeypatch.setattr(
+        runner,
+        "run_baseline_workflow",
+        lambda *, built_dataset, trainer_config, abstention_threshold, abstention_min_coverage_target: (
+            _dummy_workflow_result(pass_kpi=True)
+        ),
+    )
+
+    exit_code = runner.main(
+        [
+            "--workspace-root",
+            str(workspace_root),
+            "--dataset-root",
+            "data/raw/cwru",
+            "--output-dir",
+            "artifacts/step4-cli-release-fail",
+            "--release-max-model-size-bytes",
+            "1",
+            "--fail-on-release-gate",
         ]
     )
     assert exit_code == 1
