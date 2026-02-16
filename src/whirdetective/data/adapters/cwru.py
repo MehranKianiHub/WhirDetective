@@ -39,7 +39,8 @@ def list_cwru_mat_files(root_dir: str | Path) -> tuple[Path, ...]:
     if not root.is_dir():
         raise NotADirectoryError(f"CWRU root is not a directory: {root}")
 
-    return tuple(sorted(path for path in root.rglob("*.mat") if path.is_file()))
+    mat_files = tuple(path for path in root.rglob("*.mat") if path.is_file())
+    return tuple(sorted(mat_files, key=_cwru_sort_key))
 
 
 def infer_cwru_label_from_path(file_path: str | Path) -> BearingFaultLabel:
@@ -126,3 +127,10 @@ def _extract_numeric_file_id(path: Path) -> int | None:
     if stem.isdigit():
         return int(stem)
     return None
+
+
+def _cwru_sort_key(path: Path) -> tuple[int, int, str]:
+    numeric_id = _extract_numeric_file_id(path)
+    if numeric_id is not None:
+        return (0, numeric_id, str(path))
+    return (1, 0, str(path))

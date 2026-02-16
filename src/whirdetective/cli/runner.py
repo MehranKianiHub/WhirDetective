@@ -147,6 +147,7 @@ def run_step4_from_args(args: argparse.Namespace) -> Step4CliArtifacts:
         built_dataset=built_dataset,
         trainer_config=trainer_config,
         abstention_threshold=args.abstention_threshold,
+        abstention_min_coverage_target=args.kpi_min_coverage,
     )
 
     kpi_targets = Step4KpiTargets(
@@ -171,6 +172,10 @@ def run_step4_from_args(args: argparse.Namespace) -> Step4CliArtifacts:
             "evaluation": asdict(kpi_evaluation),
         },
     )
+    effective_abstention_threshold = float(workflow_result.model_card.abstention.threshold)
+    requested_abstention_threshold = float(args.abstention_threshold)
+    threshold_tuned = abs(effective_abstention_threshold - requested_abstention_threshold) > 1e-12
+
     _write_json(
         run_report_path,
         {
@@ -191,7 +196,9 @@ def run_step4_from_args(args: argparse.Namespace) -> Step4CliArtifacts:
                 "val_losses": list(workflow_result.history.val_losses),
             },
             "temperature": asdict(workflow_result.temperature),
-            "abstention_threshold": float(args.abstention_threshold),
+            "abstention_threshold": effective_abstention_threshold,
+            "requested_abstention_threshold": requested_abstention_threshold,
+            "abstention_threshold_tuned": threshold_tuned,
             "kpi_passed": kpi_evaluation.passed,
         },
     )

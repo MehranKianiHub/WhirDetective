@@ -57,6 +57,29 @@ def test_build_cwru_canonical_dataset_requires_enough_files(tmp_path: Path) -> N
         build_cwru_canonical_dataset(config=config, projector=projector)
 
 
+def test_build_cwru_canonical_dataset_excludes_unknown_labels_by_default(tmp_path: Path) -> None:
+    (tmp_path / "normal").mkdir()
+    (tmp_path / "inner").mkdir()
+    (tmp_path / "outer").mkdir()
+    (tmp_path / "misc").mkdir()
+    _write_cwru_mat(tmp_path / "normal" / "100.mat", scale=1.0)
+    _write_cwru_mat(tmp_path / "inner" / "101.mat", scale=2.0)
+    _write_cwru_mat(tmp_path / "outer" / "102.mat", scale=3.0)
+    _write_cwru_mat(tmp_path / "misc" / "302.mat", scale=4.0)  # numeric ID outside known mapping => unknown
+
+    projector = SensorSetProjector(ProjectionPolicy())
+    config = CwruBuildConfig(
+        root_dir=tmp_path,
+        window_size=8,
+        step_size=4,
+        split_seed=17,
+    )
+    built = build_cwru_canonical_dataset(config=config, projector=projector)
+
+    assert len(built.source_files) == 3
+    assert all(path.stem != "302" for path in built.source_files)
+
+
 def test_build_cwru_canonical_dataset_max_files_preserves_class_diversity(tmp_path: Path) -> None:
     (tmp_path / "a_normal").mkdir()
     (tmp_path / "b_normal").mkdir()

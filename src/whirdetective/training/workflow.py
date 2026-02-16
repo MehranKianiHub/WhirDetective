@@ -37,8 +37,13 @@ def run_baseline_workflow(
     built_dataset: BuiltCanonicalDataset,
     trainer_config: TrainerConfig,
     abstention_threshold: float = 0.7,
+    abstention_min_coverage_target: float | None = None,
 ) -> BaselineWorkflowResult:
     """Train baseline model, calibrate confidence, and produce model card."""
+    if abstention_min_coverage_target is not None:
+        if abstention_min_coverage_target <= 0.0 or abstention_min_coverage_target > 1.0:
+            raise ValueError("abstention_min_coverage_target must be in (0, 1]")
+
     train_samples = tuple(built_dataset.samples[idx] for idx in built_dataset.split.train_indices)
     val_samples = tuple(built_dataset.samples[idx] for idx in built_dataset.split.val_indices)
     test_samples = tuple(built_dataset.samples[idx] for idx in built_dataset.split.test_indices)
@@ -69,6 +74,18 @@ def run_baseline_workflow(
 
     val_logits = trainer.predict_logits(val_dataset.inputs)
     temperature = optimize_temperature(val_logits, val_dataset.labels)
+    calibrated_val_logits = val_logits / temperature.temperature
+    val_probs = torch.softmax(calibrated_val_logits, dim=1).cpu().numpy().astype(np.float64)
+    val_labels = val_dataset.labels.cpu().numpy()
+
+    effective_abstention_threshold = float(abstention_threshold)
+    if abstention_min_coverage_target is not None:
+        effective_abstention_threshold = _select_abstention_threshold_from_validation(
+            probabilities=val_probs,
+            labels=val_labels,
+            min_coverage=abstention_min_coverage_target,
+            default_threshold=abstention_threshold,
+        )
 
     test_logits = trainer.predict_logits(test_dataset.inputs)
     calibrated_test_logits = test_logits / temperature.temperature
@@ -85,7 +102,7 @@ def run_baseline_workflow(
     abstention = compute_abstention_metrics(
         test_probs,
         test_labels,
-        threshold=abstention_threshold,
+        threshold=effective_abstention_threshold,
     )
 
     model_card = ModelCard(
@@ -113,3 +130,62 @@ def run_baseline_workflow(
         val_dataset=val_dataset,
         test_dataset=test_dataset,
     )
+
+
+def _select_abstention_threshold_from_validation(
+    *,
+    probabilities: np.ndarray,
+    labels: np.ndarray,
+    min_coverage: float,
+    default_threshold: float,
+) -> float:
+    if min_coverage <= 0.0 or min_coverage > 1.0:
+        raise ValueError("min_coverage must be in (0, 1]")
+    if default_threshold <= 0.0 or default_threshold > 1.0:
+        raise ValueError("default_threshold must be in (0, 1]")
+
+    confidences = np.max(probabilities, axis=1)
+    candidate_thresholds = sorted(set(float(value) for value in confidences))
+    candidate_thresholds.append(float(default_threshold))
+    candidate_thresholds = sorted(
+        threshold for threshold in set(candidate_thresholds) if threshold <= default_threshold + 1e-12
+    )
+
+    if not candidate_thresholds:
+        return float(default_threshold)
+
+    best_threshold = float(default_threshold)
+    best_selective_accuracy = -1.0
+    best_coverage = -1.0
+    for threshold in candidate_thresholds:
+        metrics = compute_abstention_metrics(probabilities, labels, threshold=threshold)
+        if metrics.coverage + 1e-12 < min_coverage:
+            continue
+        if metrics.selective_accuracy > best_selective_accuracy + 1e-12:
+            best_selective_accuracy = metrics.selective_accuracy
+            best_coverage = metrics.coverage
+            best_threshold = threshold
+            continue
+        if abs(metrics.selective_accuracy - best_selective_accuracy) <= 1e-12:
+            if metrics.coverage > best_coverage + 1e-12:
+                best_coverage = metrics.coverage
+                best_threshold = threshold
+                continue
+            if abs(metrics.coverage - best_coverage) <= 1e-12 and threshold > best_threshold:
+                best_threshold = threshold
+
+    if best_selective_accuracy < 0.0:
+        # No threshold met required coverage; choose highest-coverage relaxed threshold.
+        fallback_threshold = float(default_threshold)
+        fallback_coverage = -1.0
+        for threshold in candidate_thresholds:
+            metrics = compute_abstention_metrics(probabilities, labels, threshold=threshold)
+            if metrics.coverage > fallback_coverage + 1e-12:
+                fallback_coverage = metrics.coverage
+                fallback_threshold = threshold
+                continue
+            if abs(metrics.coverage - fallback_coverage) <= 1e-12 and threshold > fallback_threshold:
+                fallback_threshold = threshold
+        return float(fallback_threshold)
+
+    return float(best_threshold)

@@ -11,6 +11,7 @@ from whirdetective.data.adapters import (
     load_cwru_channels,
 )
 from whirdetective.data.contracts import CanonicalTrainingSample
+from whirdetective.data.labeling import BearingFaultLabel
 from whirdetective.data.pipeline import build_windowed_canonical_samples
 from whirdetective.data.splitting import GroupedSplit, assert_group_isolation, split_by_group
 from whirdetective.data.versioning import dataset_fingerprint
@@ -31,6 +32,7 @@ class CwruBuildConfig:
     max_files: int | None = None
     min_distinct_labels_per_split: int | None = None
     split_search_attempts: int = 256
+    exclude_unknown_labels: bool = True
 
     def __post_init__(self) -> None:
         if self.window_size <= 0:
@@ -77,6 +79,8 @@ def build_cwru_canonical_dataset(
     for file_path in selected_files:
         channels = load_cwru_channels(file_path)
         label = infer_cwru_label_from_path(file_path)
+        if config.exclude_unknown_labels and label == BearingFaultLabel.UNKNOWN:
+            continue
         machine_id = f"cwru_{file_path.parent.name}"
         run_id = file_path.stem
 
@@ -96,7 +100,7 @@ def build_cwru_canonical_dataset(
         source_files.append(file_path)
 
     if not all_samples:
-        raise ValueError("No samples were produced from selected CWRU files")
+        raise ValueError("No samples were produced from selected CWRU files after filtering")
 
     split = split_by_group(
         tuple(all_group_ids),

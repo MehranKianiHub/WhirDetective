@@ -58,3 +58,41 @@ def test_run_baseline_workflow_returns_model_card_and_metrics() -> None:
     assert result.temperature.temperature > 0.0
     assert result.model_card.training_data_fingerprint == "fp-test-001"
     assert result.model_card.classification.confusion_matrix.shape == (2, 2)
+
+
+def test_run_baseline_workflow_tunes_abstention_threshold_from_validation() -> None:
+    samples = (
+        _sample(BearingFaultLabel.HEALTHY, 11),
+        _sample(BearingFaultLabel.INNER_RACE, 12),
+        _sample(BearingFaultLabel.HEALTHY, 13),
+        _sample(BearingFaultLabel.INNER_RACE, 14),
+        _sample(BearingFaultLabel.HEALTHY, 15),
+        _sample(BearingFaultLabel.INNER_RACE, 16),
+        _sample(BearingFaultLabel.HEALTHY, 17),
+        _sample(BearingFaultLabel.INNER_RACE, 18),
+    )
+    split = GroupedSplit(
+        train_indices=(0, 1, 2, 3),
+        val_indices=(4, 5),
+        test_indices=(6, 7),
+        train_groups=("g1", "g2"),
+        val_groups=("g3",),
+        test_groups=("g4",),
+    )
+    dataset = BuiltCanonicalDataset(
+        samples=samples,
+        group_ids=("g1", "g1", "g2", "g2", "g3", "g3", "g4", "g4"),
+        split=split,
+        source_files=tuple(),
+        fingerprint="fp-test-002",
+    )
+
+    result = run_baseline_workflow(
+        built_dataset=dataset,
+        trainer_config=TrainerConfig(epochs=2, batch_size=2, learning_rate=1e-3, seed=9),
+        abstention_threshold=0.95,
+        abstention_min_coverage_target=0.9,
+    )
+
+    assert result.model_card.abstention.coverage >= 0.9
+    assert result.model_card.abstention.threshold <= 0.95

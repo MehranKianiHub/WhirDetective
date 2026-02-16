@@ -166,8 +166,8 @@ def test_main_writes_reports_and_returns_zero(tmp_path: Path, monkeypatch: objec
     monkeypatch.setattr(
         runner,
         "run_baseline_workflow",
-        lambda *, built_dataset, trainer_config, abstention_threshold: _dummy_workflow_result(
-            pass_kpi=True
+        lambda *, built_dataset, trainer_config, abstention_threshold, abstention_min_coverage_target: (
+            _dummy_workflow_result(pass_kpi=True)
         ),
     )
 
@@ -205,8 +205,8 @@ def test_main_returns_one_when_fail_on_kpi_enabled(tmp_path: Path, monkeypatch: 
     monkeypatch.setattr(
         runner,
         "run_baseline_workflow",
-        lambda *, built_dataset, trainer_config, abstention_threshold: _dummy_workflow_result(
-            pass_kpi=False
+        lambda *, built_dataset, trainer_config, abstention_threshold, abstention_min_coverage_target: (
+            _dummy_workflow_result(pass_kpi=False)
         ),
     )
 

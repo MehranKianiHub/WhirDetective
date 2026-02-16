@@ -27,6 +27,14 @@ def test_list_cwru_mat_files_recursively(tmp_path: Path) -> None:
     assert [item.name for item in files] == ["100.mat", "b.mat"]
 
 
+def test_list_cwru_mat_files_uses_numeric_filename_order(tmp_path: Path) -> None:
+    (tmp_path / "100.mat").write_text("x", encoding="utf-8")
+    (tmp_path / "97.mat").write_text("x", encoding="utf-8")
+    (tmp_path / "105.mat").write_text("x", encoding="utf-8")
+    files = list_cwru_mat_files(tmp_path)
+    assert [item.name for item in files] == ["97.mat", "100.mat", "105.mat"]
+
+
 def test_infer_cwru_label_from_path_tokens() -> None:
     assert infer_cwru_label_from_path("cwru/normal/100.mat") == BearingFaultLabel.HEALTHY
     assert infer_cwru_label_from_path("cwru/drive_ir/118.mat") == BearingFaultLabel.INNER_RACE
