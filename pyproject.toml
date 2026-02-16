@@ -27,7 +27,8 @@ dependencies = [
 ]
 
 [project.scripts]
-whirdetective-step4 = "whirdetective.cli.runner:main"
+whirdetective-runner = "whirdetective.cli.runner:main"
+whirdetective-signoff = "whirdetective.cli.signoff:main"
 
 [project.optional-dependencies]
 dev = [

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from whirdetective.cli import step4_signoff
+from whirdetective.cli import signoff
 from whirdetective.cli.runner import Step4CliArtifacts
 from whirdetective.prognostics import XjtuPrognosticsEvaluation, XjtuPrognosticsResult
 
@@ -35,9 +35,9 @@ def test_signoff_main_writes_consolidated_report(tmp_path: Path, monkeypatch: ob
             release_gate_passed=True,
         )
 
-    monkeypatch.setattr(step4_signoff.runner, "run_step4_from_args", _fake_run_step4)
+    monkeypatch.setattr(signoff.runner, "run_step4_from_args", _fake_run_step4)
     monkeypatch.setattr(
-        step4_signoff,
+        signoff,
         "run_xjtu_prognostics_baseline",
         lambda config, targets: XjtuPrognosticsResult(
             evaluation=XjtuPrognosticsEvaluation(
@@ -56,7 +56,7 @@ def test_signoff_main_writes_consolidated_report(tmp_path: Path, monkeypatch: ob
         ),
     )
 
-    exit_code = step4_signoff.main(
+    exit_code = signoff.main(
         [
             "--workspace-root",
             str(workspace_root),

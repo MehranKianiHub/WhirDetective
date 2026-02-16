@@ -49,7 +49,7 @@ class Step4CliArtifacts:
 def build_parser() -> argparse.ArgumentParser:
     """Create CLI parser for Step 4 workflow execution."""
     parser = argparse.ArgumentParser(
-        prog="whirdetective-step4",
+        prog="whirdetective-runner",
         description=(
             "Run Step 4 baseline workflow on local diagnosis data and emit model-card + KPI report."
         ),
