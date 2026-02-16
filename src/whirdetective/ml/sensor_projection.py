@@ -48,6 +48,13 @@ _DEFAULT_FEATURE_NAMES: tuple[str, ...] = (
     "rms",
     "peak_to_peak",
     "abs_max",
+    "skewness",
+    "kurtosis",
+    "crest_factor",
+    "impulse_factor",
+    "spectral_centroid_norm",
+    "spectral_entropy",
+    "spectral_flatness",
 )
 
 
@@ -189,4 +196,55 @@ def _extract_channel_features(series: FloatArray) -> FloatArray:
     rms = float(np.sqrt(np.mean(np.square(series))))
     peak_to_peak = float(np.max(series) - np.min(series))
     abs_max = float(np.max(np.abs(series)))
-    return np.asarray((mean, std, rms, peak_to_peak, abs_max), dtype=np.float64)
+
+    centered = series - mean
+    eps = 1e-12
+    if std > eps:
+        standardized = centered / std
+        skewness = float(np.mean(np.power(standardized, 3)))
+        kurtosis = float(np.mean(np.power(standardized, 4)))
+    else:
+        skewness = 0.0
+        kurtosis = 0.0
+    crest_factor = float(abs_max / (rms + eps))
+    impulse_factor = float(abs_max / (np.mean(np.abs(series)) + eps))
+
+    mags = np.abs(np.fft.rfft(series))
+    power = np.square(mags)
+    power_sum = float(np.sum(power))
+    if power_sum > eps and power.size > 1:
+        freqs = np.fft.rfftfreq(series.size, d=1.0)
+        max_freq = float(freqs[-1]) if freqs.size > 1 else 0.0
+        if max_freq > eps:
+            spectral_centroid_norm = float(np.sum(freqs * power) / (max_freq * power_sum))
+        else:
+            spectral_centroid_norm = 0.0
+        power_probs = power / power_sum
+        spectral_entropy = float(
+            -np.sum(power_probs * np.log(power_probs + eps)) / np.log(float(power_probs.size))
+        )
+        geometric_mean = float(np.exp(np.mean(np.log(power + eps))))
+        arithmetic_mean = float(np.mean(power))
+        spectral_flatness = float(geometric_mean / (arithmetic_mean + eps))
+    else:
+        spectral_centroid_norm = 0.0
+        spectral_entropy = 0.0
+        spectral_flatness = 0.0
+
+    return np.asarray(
+        (
+            mean,
+            std,
+            rms,
+            peak_to_peak,
+            abs_max,
+            skewness,
+            kurtosis,
+            crest_factor,
+            impulse_factor,
+            spectral_centroid_norm,
+            spectral_entropy,
+            spectral_flatness,
+        ),
+        dtype=np.float64,
+    )

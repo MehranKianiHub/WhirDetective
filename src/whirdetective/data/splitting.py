@@ -31,6 +31,7 @@ def split_by_group(
     seed: int = 42,
     labels: Sequence[str] | None = None,
     min_distinct_labels_per_split: int | None = None,
+    required_labels_per_split: Sequence[str] | None = None,
     search_attempts: int = 256,
 ) -> GroupedSplit:
     """Split sample indices by group id so groups never span multiple splits.
@@ -45,6 +46,8 @@ def split_by_group(
         raise ValueError("labels length must match group_ids length")
     if min_distinct_labels_per_split is not None and labels is None:
         raise ValueError("labels are required when min_distinct_labels_per_split is set")
+    if required_labels_per_split is not None and labels is None:
+        raise ValueError("labels are required when required_labels_per_split is set")
     if min_distinct_labels_per_split is not None and min_distinct_labels_per_split <= 0:
         raise ValueError("min_distinct_labels_per_split must be > 0")
     if search_attempts <= 0:
@@ -75,6 +78,7 @@ def split_by_group(
         split_group_counts=split_group_counts,
         seed=seed,
         min_distinct_labels_per_split=min_distinct_labels_per_split,
+        required_labels_per_split=required_labels_per_split,
         search_attempts=search_attempts,
     )
 
@@ -103,6 +107,7 @@ def _split_by_group_stratified_search(
     split_group_counts: tuple[int, int, int],
     seed: int,
     min_distinct_labels_per_split: int | None,
+    required_labels_per_split: Sequence[str] | None,
     search_attempts: int,
 ) -> GroupedSplit:
     unique_groups = sorted(set(group_ids))
@@ -112,6 +117,10 @@ def _split_by_group_stratified_search(
             "min_distinct_labels_per_split exceeds number of available labels "
             f"({len(label_names)})"
         )
+    required_labels = _normalize_required_labels(
+        required_labels_per_split=required_labels_per_split,
+        available_labels=tuple(label_names),
+    )
 
     group_label_counts = _group_label_counts(group_ids=group_ids, labels=labels)
     global_label_distribution = _normalize_label_counts(
@@ -122,6 +131,7 @@ def _split_by_group_stratified_search(
     best_split: GroupedSplit | None = None
     best_score: float | None = None
     best_min_distinct = -1
+    best_required_present = 0
 
     for offset in count(0):
         if offset >= search_attempts:
@@ -136,6 +146,13 @@ def _split_by_group_stratified_search(
         current_min_distinct = min(distinct_per_split)
         if current_min_distinct < min_required:
             best_min_distinct = max(best_min_distinct, current_min_distinct)
+            continue
+        required_present = _required_labels_presence_count(
+            split_label_counts=split_label_counts,
+            required_labels=required_labels,
+        )
+        if required_present < len(required_labels) * 3:
+            best_required_present = max(best_required_present, required_present)
             continue
 
         score = _distribution_drift_score(
@@ -152,10 +169,16 @@ def _split_by_group_stratified_search(
             best_score = score
 
     if best_split is None:
+        required_text = ""
+        if required_labels:
+            required_text = (
+                f", required labels in each split: {list(required_labels)} "
+                f"(best satisfied {best_required_present} of {len(required_labels) * 3})"
+            )
         raise ValueError(
             "Could not find grouped split satisfying class coverage constraints "
             f"(required min distinct labels per split: {min_required}, "
-            f"best achieved: {best_min_distinct})"
+            f"best achieved: {best_min_distinct}{required_text})"
         )
     return best_split
 
@@ -310,3 +333,35 @@ def _distribution_drift_score(
             split_ratio = label_counts.get(label_name, 0) / split_total
             score += abs(split_ratio - global_ratio)
     return score
+
+
+def _normalize_required_labels(
+    *,
+    required_labels_per_split: Sequence[str] | None,
+    available_labels: tuple[str, ...],
+) -> tuple[str, ...]:
+    if required_labels_per_split is None:
+        return tuple()
+    normalized = tuple(sorted(set(required_labels_per_split)))
+    unknown = sorted(set(normalized).difference(available_labels))
+    if unknown:
+        raise ValueError(
+            "required_labels_per_split includes labels not present in data: "
+            f"{unknown}"
+        )
+    return normalized
+
+
+def _required_labels_presence_count(
+    *,
+    split_label_counts: tuple[dict[str, int], dict[str, int], dict[str, int]],
+    required_labels: tuple[str, ...],
+) -> int:
+    if not required_labels:
+        return 0
+    present = 0
+    for label_counts in split_label_counts:
+        for label_name in required_labels:
+            if label_counts.get(label_name, 0) > 0:
+                present += 1
+    return present

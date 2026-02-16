@@ -7,7 +7,7 @@ from typing import cast
 
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, Dataset, TensorDataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset, WeightedRandomSampler
 
 from whirdetective.ml import BaselineBearingCNN
 
@@ -20,6 +20,7 @@ class TrainerConfig:
     batch_size: int = 32
     learning_rate: float = 1e-3
     weight_decay: float = 1e-5
+    use_balanced_sampling: bool = True
     device: str = "cpu"
     seed: int = 7
 
@@ -80,12 +81,20 @@ class BaselineTrainer:
         else:
             self._criterion = nn.CrossEntropyLoss()
 
+        use_balanced_sampling = class_weights is not None and self._config.use_balanced_sampling
+        sample_weights: torch.Tensor | None = None
+        if use_balanced_sampling:
+            assert class_weights is not None
+            sample_weights = class_weights.detach().cpu()[train_labels.detach().cpu()].to(
+                dtype=torch.float64
+            )
         train_loader = _make_loader(
             train_inputs,
             train_labels,
             batch_size=self._config.batch_size,
-            shuffle=True,
+            shuffle=not use_balanced_sampling,
             seed=self._config.seed,
+            sample_weights=sample_weights,
         )
         val_loader = _make_loader(
             val_inputs,
@@ -93,6 +102,7 @@ class BaselineTrainer:
             batch_size=self._config.batch_size,
             shuffle=False,
             seed=None,
+            sample_weights=None,
         )
 
         train_losses: list[float] = []
@@ -169,6 +179,7 @@ def _make_loader(
     batch_size: int,
     shuffle: bool,
     seed: int | None,
+    sample_weights: torch.Tensor | None,
 ) -> DataLoader[tuple[torch.Tensor, torch.Tensor]]:
     if inputs.ndim != 3:
         raise ValueError("inputs must have shape [batch, channels, samples]")
@@ -179,7 +190,21 @@ def _make_loader(
 
     dataset = cast(Dataset[tuple[torch.Tensor, torch.Tensor]], TensorDataset(inputs, labels))
     generator = None
-    if shuffle and seed is not None:
+    if (shuffle or sample_weights is not None) and seed is not None:
         generator = torch.Generator()
         generator.manual_seed(seed)
+    if sample_weights is not None:
+        if sample_weights.ndim != 1:
+            raise ValueError("sample_weights must be 1D when provided")
+        if int(sample_weights.shape[0]) != int(labels.shape[0]):
+            raise ValueError("sample_weights length must match labels length")
+        if torch.any(sample_weights <= 0):
+            raise ValueError("sample_weights must contain positive values")
+        sampler = WeightedRandomSampler(
+            weights=sample_weights.to(dtype=torch.float64).tolist(),
+            num_samples=int(labels.shape[0]),
+            replacement=True,
+            generator=generator,
+        )
+        return DataLoader(dataset, batch_size=batch_size, shuffle=False, sampler=sampler)
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, generator=generator)

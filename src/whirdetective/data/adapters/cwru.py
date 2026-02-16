@@ -13,21 +13,19 @@ from whirdetective.data.labeling import BearingFaultLabel
 
 _HEALTHY_IDS: frozenset[int] = frozenset({97, 98, 99, 100})
 _INNER_RACE_IDS: frozenset[int] = frozenset(
-    set(range(105, 113))
-    | set(range(169, 178))
-    | set(range(209, 218))
-    | {3001, 3002, 3003, 3004}
+    set(range(105, 109))
+    | set(range(169, 173))
+    | set(range(209, 213))
 )
 _BALL_IDS: frozenset[int] = frozenset(
-    set(range(118, 126))
-    | set(range(185, 193))
-    | set(range(222, 230))
-    | {3005, 3006, 3007, 3008}
+    set(range(118, 122))
+    | set(range(185, 189))
+    | set(range(222, 226))
 )
 _OUTER_RACE_IDS: frozenset[int] = frozenset(
-    set(range(130, 139))
-    | set(range(197, 205))
-    | set(range(234, 242))
+    set(range(130, 134))
+    | set(range(197, 201))
+    | set(range(234, 238))
 )
 
 

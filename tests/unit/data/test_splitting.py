@@ -105,3 +105,49 @@ def test_grouped_split_with_unreachable_class_coverage_raises() -> None:
             search_attempts=64,
             seed=3,
         )
+
+
+def test_grouped_split_can_require_specific_labels_in_each_split() -> None:
+    group_ids = tuple(
+        f"group_{label}_{group_idx}"
+        for label in ("healthy", "inner_race", "ball")
+        for group_idx in range(4)
+    )
+    labels = tuple(
+        label
+        for label in ("healthy", "inner_race", "ball")
+        for _ in range(4)
+    )
+    split = split_by_group(
+        group_ids,
+        train_ratio=0.5,
+        val_ratio=0.25,
+        test_ratio=0.25,
+        labels=labels,
+        min_distinct_labels_per_split=2,
+        required_labels_per_split=("healthy", "inner_race", "ball"),
+        search_attempts=512,
+        seed=13,
+    )
+
+    split_to_indices = {
+        "train": split.train_indices,
+        "val": split.val_indices,
+        "test": split.test_indices,
+    }
+    for indices in split_to_indices.values():
+        present = {labels[idx] for idx in indices}
+        assert {"healthy", "inner_race", "ball"}.issubset(present)
+
+
+def test_grouped_split_required_labels_validates_unknown_label() -> None:
+    group_ids = ("g_h_1", "g_h_2", "g_i_1", "g_i_2", "g_b_1", "g_b_2")
+    labels = ("healthy", "healthy", "inner_race", "inner_race", "ball", "ball")
+    with pytest.raises(ValueError, match="not present in data"):
+        split_by_group(
+            group_ids,
+            labels=labels,
+            required_labels_per_split=("healthy", "outer_race"),
+            search_attempts=64,
+            seed=3,
+        )

@@ -26,7 +26,7 @@ def test_projection_shape_is_stable_across_channel_counts() -> None:
     projected_b = projector.project(dataset_b)
 
     assert projected_a.features.shape == projected_b.features.shape
-    assert projected_a.features.shape == (len(projector.role_order), 5)
+    assert projected_a.features.shape == (len(projector.role_order), len(projected_a.feature_names))
 
 
 def test_missing_role_is_zero_and_masked_false() -> None:
@@ -35,7 +35,10 @@ def test_missing_role_is_zero_and_masked_false() -> None:
 
     temperature_idx = projector.role_index(SensorRole.TEMPERATURE)
     assert not bool(projected.presence_mask[temperature_idx])
-    assert np.allclose(projected.features[temperature_idx], np.zeros((5,), dtype=np.float64))
+    assert np.allclose(
+        projected.features[temperature_idx],
+        np.zeros((len(projected.feature_names),), dtype=np.float64),
+    )
 
 
 def test_multiple_channels_aggregate_per_role() -> None:

@@ -27,7 +27,10 @@ def test_build_windowed_canonical_samples_produces_aligned_windows() -> None:
     assert len(samples) == 5
     assert samples[0].metadata["window_index"] == "0"
     assert samples[-1].metadata["window_index"] == "4"
-    assert samples[0].features.shape == (len(projector.role_order), 5)
+    assert samples[0].features.shape == (
+        len(projector.role_order),
+        len(projector.project({"de_accel": np.arange(4, dtype=np.float64)}).feature_names),
+    )
 
 
 def test_build_windowed_canonical_samples_uses_min_aligned_count() -> None:

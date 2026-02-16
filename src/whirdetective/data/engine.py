@@ -37,6 +37,7 @@ class CwruBuildConfig:
     split_seed: int = 42
     max_files: int | None = None
     min_distinct_labels_per_split: int | None = None
+    require_all_labels_per_split: bool = False
     split_search_attempts: int = 256
     exclude_unknown_labels: bool = True
 
@@ -67,6 +68,7 @@ class PaderbornBuildConfig:
     max_archives: int | None = None
     max_entries_per_archive: int | None = None
     min_distinct_labels_per_split: int | None = None
+    require_all_labels_per_split: bool = False
     split_search_attempts: int = 256
     exclude_unknown_labels: bool = True
     collapse_fault_classes: bool = True
@@ -155,6 +157,11 @@ def build_cwru_canonical_dataset(
         seed=config.split_seed,
         labels=tuple(sample.label.value for sample in all_samples),
         min_distinct_labels_per_split=config.min_distinct_labels_per_split,
+        required_labels_per_split=(
+            tuple(sorted({sample.label.value for sample in all_samples}))
+            if config.require_all_labels_per_split
+            else None
+        ),
         search_attempts=config.split_search_attempts,
     )
     assert_group_isolation(tuple(all_group_ids), split)
@@ -247,6 +254,11 @@ def build_paderborn_canonical_dataset(
         seed=config.split_seed,
         labels=tuple(sample.label.value for sample in all_samples),
         min_distinct_labels_per_split=config.min_distinct_labels_per_split,
+        required_labels_per_split=(
+            tuple(sorted({sample.label.value for sample in all_samples}))
+            if config.require_all_labels_per_split
+            else None
+        ),
         search_attempts=config.split_search_attempts,
     )
     assert_group_isolation(tuple(all_group_ids), split)

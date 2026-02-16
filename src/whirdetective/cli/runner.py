@@ -115,10 +115,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=1024,
         help="Number of candidate grouped split assignments to evaluate.",
     )
+    parser.add_argument(
+        "--split-require-all-classes",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "Require every observed class label to appear in train/val/test. "
+            "Defaults to enabled for CWRU and disabled for Paderborn."
+        ),
+    )
     parser.add_argument("--epochs", type=int, default=12, help="Training epochs.")
     parser.add_argument("--batch-size", type=int, default=32, help="Training batch size.")
     parser.add_argument("--learning-rate", type=float, default=1e-3, help="Adam learning rate.")
     parser.add_argument("--weight-decay", type=float, default=1e-5, help="Adam weight decay.")
+    parser.add_argument(
+        "--balanced-sampling",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Use weighted class-balanced sampling in training mini-batches.",
+    )
     parser.add_argument("--device", type=str, default="cpu", help="Torch device identifier.")
     parser.add_argument("--trainer-seed", type=int, default=7, help="Model/training RNG seed.")
     parser.add_argument(
@@ -217,6 +232,7 @@ def run_step4_from_args(args: argparse.Namespace) -> Step4CliArtifacts:
         built_dataset=built_dataset,
         min_train_classes=args.min_train_classes,
         min_eval_classes=args.min_eval_classes,
+        require_all_classes=bool(_resolve_split_require_all_classes(args)),
     )
 
     trainer_config = TrainerConfig(
@@ -224,6 +240,7 @@ def run_step4_from_args(args: argparse.Namespace) -> Step4CliArtifacts:
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
         weight_decay=args.weight_decay,
+        use_balanced_sampling=bool(args.balanced_sampling),
         device=args.device,
         seed=args.trainer_seed,
     )
@@ -432,6 +449,7 @@ def _assert_split_class_coverage(
     built_dataset: BuiltCanonicalDataset,
     min_train_classes: int,
     min_eval_classes: int,
+    require_all_classes: bool,
 ) -> dict[str, list[str]]:
     if min_train_classes <= 0:
         raise ValueError("min_train_classes must be > 0")
@@ -468,6 +486,17 @@ def _assert_split_class_coverage(
             "test split contains classes not present in train split: "
             f"{sorted(test_labels.difference(train_labels))}"
         )
+    if require_all_classes:
+        if val_labels != train_labels:
+            raise ValueError(
+                "split-require-all-classes is enabled but val split class coverage differs "
+                f"from train. train={sorted(train_labels)} val={sorted(val_labels)}"
+            )
+        if test_labels != train_labels:
+            raise ValueError(
+                "split-require-all-classes is enabled but test split class coverage differs "
+                f"from train. train={sorted(train_labels)} test={sorted(test_labels)}"
+            )
     return {
         "train": sorted(train_labels),
         "val": sorted(val_labels),
@@ -481,6 +510,7 @@ def _build_dataset_from_args(
     dataset_root: Path,
     projector: SensorSetProjector,
 ) -> BuiltCanonicalDataset:
+    require_all_classes = _resolve_split_require_all_classes(args)
     if args.dataset_name == "cwru":
         cwru_config = CwruBuildConfig(
             root_dir=dataset_root,
@@ -492,6 +522,7 @@ def _build_dataset_from_args(
             split_seed=args.split_seed,
             max_files=args.max_files,
             min_distinct_labels_per_split=args.split_min_distinct_classes,
+            require_all_labels_per_split=bool(require_all_classes),
             split_search_attempts=args.split_search_attempts,
         )
         return build_cwru_canonical_dataset(config=cwru_config, projector=projector)
@@ -508,6 +539,7 @@ def _build_dataset_from_args(
             max_archives=args.max_archives,
             max_entries_per_archive=args.max_entries_per_archive,
             min_distinct_labels_per_split=args.split_min_distinct_classes,
+            require_all_labels_per_split=bool(require_all_classes),
             split_search_attempts=args.split_search_attempts,
             collapse_fault_classes=bool(args.paderborn_collapse_fault_classes),
         )
@@ -567,6 +599,13 @@ def _benchmark_inference_latency_ms(
         "p99_ms": float(np.quantile(samples, 0.99)),
         "mean_ms": float(np.mean(samples)),
     }
+
+
+def _resolve_split_require_all_classes(args: argparse.Namespace) -> bool:
+    requested = getattr(args, "split_require_all_classes", None)
+    if requested is not None:
+        return bool(requested)
+    return str(getattr(args, "dataset_name", "")) == "cwru"
 
 
 def main(argv: Sequence[str] | None = None) -> int:
