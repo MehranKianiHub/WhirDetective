@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://whirdetective.local/schemas/edgeos_model_manifest.schema.json",
+  "title": "WhirDetective EdgeOS Model Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "model_id",
+    "version",
+    "backend",
+    "sha256",
+    "size_bytes",
+    "input",
+    "output",
+    "deployment",
+    "runtime_budget"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "edgeos.model_manifest.v1"
+    },
+    "model_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "backend": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "input": {
+      "type": "object",
+      "required": ["width", "dtype", "description", "channels"],
+      "properties": {
+        "width": {"type": "string"},
+        "dtype": {"type": "string"},
+        "description": {"type": "string"},
+        "channels": {"type": "integer", "minimum": 1}
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": ["width", "dtype", "description"],
+      "properties": {
+        "width": {"type": "string"},
+        "dtype": {"type": "string"},
+        "description": {"type": "string"}
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "required": [
+        "load_command",
+        "info_command",
+        "ota_flow",
+        "rollback_command",
+        "rollback_policy"
+      ],
+      "properties": {
+        "load_command": {"type": "string"},
+        "info_command": {"type": "string"},
+        "ota_flow": {"type": "string"},
+        "rollback_command": {"type": "string"},
+        "rollback_policy": {"type": "string"}
+      }
+    },
+    "runtime_budget": {
+      "type": "object",
+      "required": ["latency_source", "metric"],
+      "properties": {
+        "latency_source": {"type": "string"},
+        "metric": {"type": "string"}
+      }
+    }
+  }
+}
