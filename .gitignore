@@ -1,6 +1,7 @@
 # Virtual environments
 .venv/
 .venv_cpu/
+.venv_gpu/
 venv/
 
 # Python cache/build artifacts
