@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from itertools import count
 from math import floor
 from typing import Sequence
 
@@ -28,53 +29,53 @@ def split_by_group(
     val_ratio: float = 0.15,
     test_ratio: float = 0.15,
     seed: int = 42,
+    labels: Sequence[str] | None = None,
+    min_distinct_labels_per_split: int | None = None,
+    search_attempts: int = 256,
 ) -> GroupedSplit:
-    """Split sample indices by group id so groups never span multiple splits."""
+    """Split sample indices by group id so groups never span multiple splits.
+
+    If ``labels`` are provided, the splitter can enforce class-coverage constraints
+    and search for a split with lower label-distribution drift.
+    """
     if not group_ids:
         raise ValueError("group_ids must not be empty")
     _validate_ratios(train_ratio=train_ratio, val_ratio=val_ratio, test_ratio=test_ratio)
+    if labels is not None and len(labels) != len(group_ids):
+        raise ValueError("labels length must match group_ids length")
+    if min_distinct_labels_per_split is not None and labels is None:
+        raise ValueError("labels are required when min_distinct_labels_per_split is set")
+    if min_distinct_labels_per_split is not None and min_distinct_labels_per_split <= 0:
+        raise ValueError("min_distinct_labels_per_split must be > 0")
+    if search_attempts <= 0:
+        raise ValueError("search_attempts must be > 0")
 
     unique_groups = sorted(set(group_ids))
-    rng = np.random.default_rng(seed)
-    shuffled_groups = unique_groups.copy()
-    rng.shuffle(shuffled_groups)
-
-    train_count, val_count, test_count = _allocate_group_counts(
-        total_groups=len(shuffled_groups),
+    split_group_counts = _allocate_group_counts(
+        total_groups=len(unique_groups),
         train_ratio=train_ratio,
         val_ratio=val_ratio,
         test_ratio=test_ratio,
     )
+    if labels is None:
+        rng = np.random.default_rng(seed)
+        shuffled_groups = unique_groups.copy()
+        rng.shuffle(shuffled_groups)
+        train_groups, val_groups, test_groups = _slice_group_partitions(shuffled_groups, split_group_counts)
+        return _build_split_from_group_partitions(
+            group_ids=group_ids,
+            train_groups=train_groups,
+            val_groups=val_groups,
+            test_groups=test_groups,
+        )
 
-    train_groups = tuple(shuffled_groups[:train_count])
-    val_groups = tuple(shuffled_groups[train_count : train_count + val_count])
-    test_groups = tuple(shuffled_groups[train_count + val_count : train_count + val_count + test_count])
-
-    train_set = set(train_groups)
-    val_set = set(val_groups)
-    test_set = set(test_groups)
-
-    train_indices: list[int] = []
-    val_indices: list[int] = []
-    test_indices: list[int] = []
-
-    for idx, group in enumerate(group_ids):
-        if group in train_set:
-            train_indices.append(idx)
-        elif group in val_set:
-            val_indices.append(idx)
-        elif group in test_set:
-            test_indices.append(idx)
-        else:
-            raise RuntimeError(f"Group {group!r} was not assigned to any split")
-
-    return GroupedSplit(
-        train_indices=tuple(train_indices),
-        val_indices=tuple(val_indices),
-        test_indices=tuple(test_indices),
-        train_groups=train_groups,
-        val_groups=val_groups,
-        test_groups=test_groups,
+    return _split_by_group_stratified_search(
+        group_ids=group_ids,
+        labels=labels,
+        split_group_counts=split_group_counts,
+        seed=seed,
+        min_distinct_labels_per_split=min_distinct_labels_per_split,
+        search_attempts=search_attempts,
     )
 
 
@@ -93,6 +94,70 @@ def assert_group_isolation(group_ids: Sequence[str], split: GroupedSplit) -> Non
         raise ValueError("Leakage detected between train and test groups")
     if val_groups.intersection(test_groups):
         raise ValueError("Leakage detected between val and test groups")
+
+
+def _split_by_group_stratified_search(
+    *,
+    group_ids: Sequence[str],
+    labels: Sequence[str],
+    split_group_counts: tuple[int, int, int],
+    seed: int,
+    min_distinct_labels_per_split: int | None,
+    search_attempts: int,
+) -> GroupedSplit:
+    unique_groups = sorted(set(group_ids))
+    label_names = sorted(set(labels))
+    if min_distinct_labels_per_split is not None and min_distinct_labels_per_split > len(label_names):
+        raise ValueError(
+            "min_distinct_labels_per_split exceeds number of available labels "
+            f"({len(label_names)})"
+        )
+
+    group_label_counts = _group_label_counts(group_ids=group_ids, labels=labels)
+    global_label_distribution = _normalize_label_counts(
+        _aggregate_label_counts(tuple(group_label_counts.values()))
+    )
+    min_required = 1 if min_distinct_labels_per_split is None else min_distinct_labels_per_split
+
+    best_split: GroupedSplit | None = None
+    best_score: float | None = None
+    best_min_distinct = -1
+
+    for offset in count(0):
+        if offset >= search_attempts:
+            break
+        rng = np.random.default_rng(seed + offset)
+        shuffled_groups = unique_groups.copy()
+        rng.shuffle(shuffled_groups)
+        train_groups, val_groups, test_groups = _slice_group_partitions(shuffled_groups, split_group_counts)
+        split_groups = (train_groups, val_groups, test_groups)
+        split_label_counts = _split_label_counts(split_groups, group_label_counts=group_label_counts)
+        distinct_per_split = tuple(sum(1 for count_value in counts.values() if count_value > 0) for counts in split_label_counts)
+        current_min_distinct = min(distinct_per_split)
+        if current_min_distinct < min_required:
+            best_min_distinct = max(best_min_distinct, current_min_distinct)
+            continue
+
+        score = _distribution_drift_score(
+            split_label_counts=split_label_counts,
+            global_distribution=global_label_distribution,
+        )
+        if best_score is None or score < best_score:
+            best_split = _build_split_from_group_partitions(
+                group_ids=group_ids,
+                train_groups=train_groups,
+                val_groups=val_groups,
+                test_groups=test_groups,
+            )
+            best_score = score
+
+    if best_split is None:
+        raise ValueError(
+            "Could not find grouped split satisfying class coverage constraints "
+            f"(required min distinct labels per split: {min_required}, "
+            f"best achieved: {best_min_distinct})"
+        )
+    return best_split
 
 
 def _validate_ratios(*, train_ratio: float, val_ratio: float, test_ratio: float) -> None:
@@ -143,3 +208,105 @@ def _allocate_group_counts(
             counts[idx] += 1
 
     return counts[0], counts[1], counts[2]
+
+
+def _slice_group_partitions(
+    shuffled_groups: Sequence[str],
+    split_group_counts: tuple[int, int, int],
+) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]]:
+    train_count, val_count, test_count = split_group_counts
+    train_groups = tuple(shuffled_groups[:train_count])
+    val_groups = tuple(shuffled_groups[train_count : train_count + val_count])
+    test_groups = tuple(shuffled_groups[train_count + val_count : train_count + val_count + test_count])
+    return train_groups, val_groups, test_groups
+
+
+def _build_split_from_group_partitions(
+    *,
+    group_ids: Sequence[str],
+    train_groups: tuple[str, ...],
+    val_groups: tuple[str, ...],
+    test_groups: tuple[str, ...],
+) -> GroupedSplit:
+    train_set = set(train_groups)
+    val_set = set(val_groups)
+    test_set = set(test_groups)
+
+    train_indices: list[int] = []
+    val_indices: list[int] = []
+    test_indices: list[int] = []
+    for idx, group in enumerate(group_ids):
+        if group in train_set:
+            train_indices.append(idx)
+        elif group in val_set:
+            val_indices.append(idx)
+        elif group in test_set:
+            test_indices.append(idx)
+        else:
+            raise RuntimeError(f"Group {group!r} was not assigned to any split")
+
+    return GroupedSplit(
+        train_indices=tuple(train_indices),
+        val_indices=tuple(val_indices),
+        test_indices=tuple(test_indices),
+        train_groups=train_groups,
+        val_groups=val_groups,
+        test_groups=test_groups,
+    )
+
+
+def _group_label_counts(
+    *,
+    group_ids: Sequence[str],
+    labels: Sequence[str],
+) -> dict[str, dict[str, int]]:
+    group_label_counts: dict[str, dict[str, int]] = {}
+    for group, label in zip(group_ids, labels):
+        label_counts = group_label_counts.setdefault(group, {})
+        label_counts[label] = label_counts.get(label, 0) + 1
+    return group_label_counts
+
+
+def _aggregate_label_counts(label_counts_list: Sequence[dict[str, int]]) -> dict[str, int]:
+    merged: dict[str, int] = {}
+    for label_counts in label_counts_list:
+        for label_name, count_value in label_counts.items():
+            merged[label_name] = merged.get(label_name, 0) + count_value
+    return merged
+
+
+def _normalize_label_counts(label_counts: dict[str, int]) -> dict[str, float]:
+    total = sum(label_counts.values())
+    if total <= 0:
+        raise ValueError("label counts must contain at least one sample")
+    return {label_name: count_value / total for label_name, count_value in label_counts.items()}
+
+
+def _split_label_counts(
+    split_groups: tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...]],
+    *,
+    group_label_counts: dict[str, dict[str, int]],
+) -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
+    merged: list[dict[str, int]] = []
+    for groups in split_groups:
+        merged.append(
+            _aggregate_label_counts([group_label_counts[group] for group in groups])
+        )
+    return merged[0], merged[1], merged[2]
+
+
+def _distribution_drift_score(
+    *,
+    split_label_counts: tuple[dict[str, int], dict[str, int], dict[str, int]],
+    global_distribution: dict[str, float],
+) -> float:
+    score = 0.0
+    for label_counts in split_label_counts:
+        split_total = sum(label_counts.values())
+        if split_total == 0:
+            score += float(len(global_distribution))
+            continue
+        for label_name, global_ratio in global_distribution.items():
+            split_ratio = label_counts.get(label_name, 0) / split_total
+            score += abs(split_ratio - global_ratio)
+    return score

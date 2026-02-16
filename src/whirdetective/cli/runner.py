@@ -58,6 +58,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--val-ratio", type=float, default=0.15, help="Validation split ratio.")
     parser.add_argument("--test-ratio", type=float, default=0.15, help="Test split ratio.")
     parser.add_argument("--split-seed", type=int, default=42, help="Split RNG seed.")
+    parser.add_argument(
+        "--split-min-distinct-classes",
+        type=int,
+        default=2,
+        help="Minimum distinct classes required in each split during grouped split search.",
+    )
+    parser.add_argument(
+        "--split-search-attempts",
+        type=int,
+        default=1024,
+        help="Number of candidate grouped split assignments to evaluate.",
+    )
     parser.add_argument("--epochs", type=int, default=12, help="Training epochs.")
     parser.add_argument("--batch-size", type=int, default=32, help="Training batch size.")
     parser.add_argument("--learning-rate", type=float, default=1e-3, help="Adam learning rate.")
@@ -75,6 +87,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--kpi-max-ece", type=float, default=0.20)
     parser.add_argument("--kpi-min-coverage", type=float, default=0.70)
     parser.add_argument("--kpi-min-selective-accuracy", type=float, default=0.80)
+    parser.add_argument(
+        "--min-train-classes",
+        type=int,
+        default=2,
+        help="Minimum distinct classes required in the train split.",
+    )
+    parser.add_argument(
+        "--min-eval-classes",
+        type=int,
+        default=2,
+        help="Minimum distinct classes required in both val and test splits.",
+    )
     parser.add_argument(
         "--fail-on-kpi",
         action="store_true",
@@ -100,10 +124,16 @@ def run_step4_from_args(args: argparse.Namespace) -> Step4CliArtifacts:
         test_ratio=args.test_ratio,
         split_seed=args.split_seed,
         max_files=args.max_files,
+        min_distinct_labels_per_split=args.split_min_distinct_classes,
+        split_search_attempts=args.split_search_attempts,
     )
     projector = SensorSetProjector(policy=ProjectionPolicy())
     built_dataset = build_cwru_canonical_dataset(config=build_config, projector=projector)
-    _assert_split_class_coverage(built_dataset=built_dataset, min_classes=2)
+    class_coverage = _assert_split_class_coverage(
+        built_dataset=built_dataset,
+        min_train_classes=args.min_train_classes,
+        min_eval_classes=args.min_eval_classes,
+    )
 
     trainer_config = TrainerConfig(
         epochs=args.epochs,
@@ -154,6 +184,7 @@ def run_step4_from_args(args: argparse.Namespace) -> Step4CliArtifacts:
                 "val": len(built_dataset.split.val_indices),
                 "test": len(built_dataset.split.test_indices),
             },
+            "split_class_coverage": class_coverage,
             "trainer_config": asdict(trainer_config),
             "training_history": {
                 "train_losses": list(workflow_result.history.train_losses),
@@ -176,14 +207,49 @@ def run_step4_from_args(args: argparse.Namespace) -> Step4CliArtifacts:
 def _assert_split_class_coverage(
     *,
     built_dataset: BuiltCanonicalDataset,
-    min_classes: int,
-) -> None:
+    min_train_classes: int,
+    min_eval_classes: int,
+) -> dict[str, list[str]]:
+    if min_train_classes <= 0:
+        raise ValueError("min_train_classes must be > 0")
+    if min_eval_classes <= 0:
+        raise ValueError("min_eval_classes must be > 0")
+
     train_labels = {built_dataset.samples[idx].label.value for idx in built_dataset.split.train_indices}
-    if len(train_labels) < min_classes:
+    val_labels = {built_dataset.samples[idx].label.value for idx in built_dataset.split.val_indices}
+    test_labels = {built_dataset.samples[idx].label.value for idx in built_dataset.split.test_indices}
+
+    if len(train_labels) < min_train_classes:
         raise ValueError(
             f"train split has only {len(train_labels)} class(es): {sorted(train_labels)}. "
-            "Increase data diversity (or max-files) so the training split covers at least 2 classes."
+            "Increase data diversity (or max-files) so training coverage meets the required minimum."
         )
+    if len(val_labels) < min_eval_classes:
+        raise ValueError(
+            f"val split has only {len(val_labels)} class(es): {sorted(val_labels)}. "
+            "Increase data diversity (or max-files) or split-search-attempts."
+        )
+    if len(test_labels) < min_eval_classes:
+        raise ValueError(
+            f"test split has only {len(test_labels)} class(es): {sorted(test_labels)}. "
+            "Increase data diversity (or max-files) or split-search-attempts."
+        )
+
+    if not val_labels.issubset(train_labels):
+        raise ValueError(
+            "val split contains classes not present in train split: "
+            f"{sorted(val_labels.difference(train_labels))}"
+        )
+    if not test_labels.issubset(train_labels):
+        raise ValueError(
+            "test split contains classes not present in train split: "
+            f"{sorted(test_labels.difference(train_labels))}"
+        )
+    return {
+        "train": sorted(train_labels),
+        "val": sorted(val_labels),
+        "test": sorted(test_labels),
+    }
 
 
 def main(argv: Sequence[str] | None = None) -> int:

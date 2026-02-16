@@ -29,6 +29,8 @@ class CwruBuildConfig:
     test_ratio: float = 0.15
     split_seed: int = 42
     max_files: int | None = None
+    min_distinct_labels_per_split: int | None = None
+    split_search_attempts: int = 256
 
     def __post_init__(self) -> None:
         if self.window_size <= 0:
@@ -37,6 +39,10 @@ class CwruBuildConfig:
             raise ValueError("step_size must be > 0")
         if self.max_files is not None and self.max_files <= 0:
             raise ValueError("max_files must be > 0 when set")
+        if self.min_distinct_labels_per_split is not None and self.min_distinct_labels_per_split <= 0:
+            raise ValueError("min_distinct_labels_per_split must be > 0 when set")
+        if self.split_search_attempts <= 0:
+            raise ValueError("split_search_attempts must be > 0")
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +104,9 @@ def build_cwru_canonical_dataset(
         val_ratio=config.val_ratio,
         test_ratio=config.test_ratio,
         seed=config.split_seed,
+        labels=tuple(sample.label.value for sample in all_samples),
+        min_distinct_labels_per_split=config.min_distinct_labels_per_split,
+        search_attempts=config.split_search_attempts,
     )
     assert_group_isolation(tuple(all_group_ids), split)
 

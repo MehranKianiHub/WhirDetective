@@ -62,3 +62,46 @@ def test_assert_group_isolation_detects_leakage() -> None:
     )
     with pytest.raises(ValueError, match="Leakage detected"):
         assert_group_isolation(group_ids, leaking_split)
+
+
+def test_grouped_split_with_labels_enforces_min_distinct_class_coverage() -> None:
+    group_ids = tuple(
+        f"group_{label}_{group_idx}"
+        for label in ("healthy", "inner_race", "ball")
+        for group_idx in range(4)
+    )
+    labels = tuple(
+        label
+        for label in ("healthy", "inner_race", "ball")
+        for _ in range(4)
+    )
+    split = split_by_group(
+        group_ids,
+        labels=labels,
+        min_distinct_labels_per_split=2,
+        search_attempts=256,
+        seed=11,
+    )
+    assert_group_isolation(group_ids, split)
+
+    split_to_indices = {
+        "train": split.train_indices,
+        "val": split.val_indices,
+        "test": split.test_indices,
+    }
+    for indices in split_to_indices.values():
+        distinct_labels = {labels[idx] for idx in indices}
+        assert len(distinct_labels) >= 2
+
+
+def test_grouped_split_with_unreachable_class_coverage_raises() -> None:
+    group_ids = ("g_h", "g_h", "g_i", "g_i", "g_b", "g_b")
+    labels = ("healthy", "healthy", "inner_race", "inner_race", "ball", "ball")
+    with pytest.raises(ValueError, match="Could not find grouped split"):
+        split_by_group(
+            group_ids,
+            labels=labels,
+            min_distinct_labels_per_split=2,
+            search_attempts=64,
+            seed=3,
+        )
