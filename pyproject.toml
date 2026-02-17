@@ -30,6 +30,8 @@ dependencies = [
 whirdetective-runner = "whirdetective.cli.runner:main"
 whirdetective-signoff = "whirdetective.cli.signoff:main"
 whirdetective-runtime-freeze = "whirdetective.cli.runtime_freeze:main"
+whirdetective-staging-canary = "whirdetective.cli.staging_canary:main"
+whirdetective-edgeos-export = "whirdetective.cli.edgeos_export:main"
 
 [project.optional-dependencies]
 dev = [

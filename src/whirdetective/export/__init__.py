@@ -5,7 +5,11 @@ from whirdetective.export.edgeos_contract import (
     build_edgeos_model_manifest,
     validate_edgeos_model_manifest,
 )
-from whirdetective.export.model_package import EdgeModelArtifactPaths, save_edge_model_package
+from whirdetective.export.model_package import (
+    EdgeModelArtifactPaths,
+    save_edge_model_blob_package,
+    save_edge_model_package,
+)
 from whirdetective.export.release_gate import ReleaseGateEvaluation, ReleaseGateTargets, evaluate_release_gate
 from whirdetective.export.verification import PackageVerificationResult, verify_edge_model_package
 
@@ -15,6 +19,7 @@ __all__ = [
     "PackageVerificationResult",
     "ReleaseGateEvaluation",
     "ReleaseGateTargets",
+    "save_edge_model_blob_package",
     "build_edgeos_model_manifest",
     "evaluate_release_gate",
     "save_edge_model_package",

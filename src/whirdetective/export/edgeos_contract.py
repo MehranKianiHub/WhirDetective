@@ -17,6 +17,7 @@ def build_edgeos_model_manifest(
     model_id: str,
     model_version: str,
     model_file: Path,
+    backend: str = "pytorch_state_dict",
     input_channels: int,
     num_classes: int,
     class_names: tuple[str, ...],
@@ -35,12 +36,15 @@ def build_edgeos_model_manifest(
         raise ValueError("num_classes must be > 1")
     if len(class_names) != num_classes:
         raise ValueError("class_names length must match num_classes")
+    if not backend.strip():
+        raise ValueError("backend must not be empty")
 
     return {
         "schema_version": EDGEOS_MODEL_MANIFEST_SCHEMA_VERSION,
         "model_id": model_id,
         "version": model_version,
-        "backend": "pytorch_state_dict",
+        "backend": backend,
+        "model_file": model_file.name,
         "sha256": sha256_file(model_file),
         "size_bytes": int(model_file.stat().st_size),
         "input": {
@@ -89,6 +93,7 @@ def validate_edgeos_model_manifest(payload: dict[str, Any]) -> tuple[bool, tuple
         "model_id",
         "version",
         "backend",
+        "model_file",
         "sha256",
         "size_bytes",
         "input",
@@ -110,12 +115,18 @@ def validate_edgeos_model_manifest(payload: dict[str, Any]) -> tuple[bool, tuple
         failures.append("invalid_size_bytes")
     if not isinstance(payload.get("sha256"), str) or len(str(payload.get("sha256"))) != 64:
         failures.append("invalid_sha256")
+    if not isinstance(payload.get("model_file"), str) or not str(payload.get("model_file")).strip():
+        failures.append("invalid_model_file")
     if not isinstance(payload.get("deployment"), dict):
         failures.append("deployment_must_be_object")
     else:
         deployment = payload["deployment"]
         if "rollback_policy" not in deployment:
             failures.append("missing_field:deployment.rollback_policy")
+    backend = str(payload.get("backend", ""))
+    model_file = str(payload.get("model_file", ""))
+    if backend in {"tflite", "tflite_flatbuffer"} and not model_file.endswith(".tflite"):
+        failures.append("invalid_model_file_for_tflite_backend")
 
     return (len(failures) == 0, tuple(failures))
 

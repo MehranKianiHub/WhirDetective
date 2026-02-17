@@ -9,7 +9,7 @@ import torch
 
 from whirdetective.export.edgeos_contract import validate_edgeos_model_manifest
 from whirdetective.export.manifest import sha256_file
-from whirdetective.export.model_package import save_edge_model_package
+from whirdetective.export.model_package import save_edge_model_blob_package, save_edge_model_package
 from whirdetective.export.verification import verify_edge_model_package
 
 
@@ -54,6 +54,7 @@ def test_save_edge_model_package_writes_artifacts_and_manifest(tmp_path: Path) -
     assert edgeos_ok is True
     assert edgeos_failures == ()
     assert edgeos_manifest["model_id"] == "whirdetective.bearing.baseline"
+    assert edgeos_manifest["model_file"] == "model_state_dict.pt"
 
     manifest = json.loads(paths.manifest_path.read_text(encoding="utf-8"))
     assert manifest["manifest_version"] == "1.0"
@@ -103,3 +104,36 @@ def test_save_edge_model_package_emits_and_verifies_signature(tmp_path: Path) ->
     verification_bad = verify_edge_model_package(package_dir=tmp_path, signing_key="wrong-key")
     assert verification_bad.ok is False
     assert verification_bad.signature_verified is False
+
+
+def test_save_edge_model_blob_package_supports_tflite_backend(tmp_path: Path) -> None:
+    model_blob = tmp_path / "source_model.tflite"
+    model_blob.write_bytes(b"TFL3-placeholder")
+
+    output_dir = tmp_path / "exported"
+    paths = save_edge_model_blob_package(
+        output_dir=output_dir,
+        model_blob_path=model_blob,
+        model_artifact_name="model.tflite",
+        backend="tflite",
+        model_name="BaselineBearingCNN",
+        input_channels=6,
+        num_classes=2,
+        class_names=("healthy", "fault"),
+        temperature=1.2,
+        abstention_threshold=0.7,
+        dataset_fingerprint="fp-002",
+    )
+
+    assert paths.model_state_path.name == "model.tflite"
+    assert paths.model_state_path.read_bytes() == b"TFL3-placeholder"
+
+    edgeos_manifest = json.loads(paths.edgeos_manifest_path.read_text(encoding="utf-8"))
+    edgeos_ok, edgeos_failures = validate_edgeos_model_manifest(edgeos_manifest)
+    assert edgeos_ok is True
+    assert edgeos_failures == ()
+    assert edgeos_manifest["backend"] == "tflite"
+    assert edgeos_manifest["model_file"] == "model.tflite"
+
+    verification = verify_edge_model_package(package_dir=output_dir)
+    assert verification.ok is True

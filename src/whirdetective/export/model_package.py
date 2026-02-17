@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -31,10 +32,12 @@ class EdgeModelArtifactPaths:
     signature_path: Path | None
 
 
-def save_edge_model_package(
+def save_edge_model_blob_package(
     *,
     output_dir: Path,
-    model_state_dict: Mapping[str, torch.Tensor],
+    model_blob_path: Path,
+    model_artifact_name: str,
+    backend: str,
     model_name: str,
     input_channels: int,
     num_classes: int,
@@ -48,7 +51,17 @@ def save_edge_model_package(
     signing_key: str | None = None,
     signing_key_env_var: str = "WHIRDETECTIVE_MANIFEST_SIGNING_KEY",
 ) -> EdgeModelArtifactPaths:
-    """Persist trained model artifacts and integrity manifest for EdgeOS handoff."""
+    """Persist a backend-specific model blob package for EdgeOS handoff."""
+    if not model_blob_path.exists():
+        raise FileNotFoundError(f"model_blob_path does not exist: {model_blob_path}")
+    if not model_artifact_name.strip():
+        raise ValueError("model_artifact_name must not be empty")
+    if "/" in model_artifact_name or "\\" in model_artifact_name:
+        raise ValueError("model_artifact_name must be a file name, not a path")
+    if not backend.strip():
+        raise ValueError("backend must not be empty")
+    if backend in {"tflite", "tflite_flatbuffer"} and not model_artifact_name.endswith(".tflite"):
+        raise ValueError("tflite backends require model_artifact_name to end with .tflite")
     if input_channels <= 0:
         raise ValueError("input_channels must be > 0")
     if num_classes <= 1:
@@ -61,18 +74,20 @@ def save_edge_model_package(
         raise ValueError("abstention_threshold must be in (0, 1]")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    model_state_path = output_dir / "model_state_dict.pt"
+    model_state_path = output_dir / model_artifact_name
     inference_config_path = output_dir / "inference_config.json"
     calibration_path = output_dir / "calibration.json"
     edgeos_manifest_path = output_dir / "edgeos_model_manifest.json"
     manifest_path = output_dir / "manifest.json"
     signature_path = output_dir / "manifest.sig"
 
-    torch.save(dict(model_state_dict), model_state_path)
+    if model_blob_path.resolve() != model_state_path.resolve():
+        shutil.copy2(model_blob_path, model_state_path)
 
+    framework = "tflite" if backend in {"tflite", "tflite_flatbuffer"} else backend
     inference_config = {
         "model_name": model_name,
-        "framework": "pytorch",
+        "framework": framework,
         "input_channels": input_channels,
         "num_classes": num_classes,
         "class_names": list(class_names),
@@ -94,6 +109,7 @@ def save_edge_model_package(
         model_id=model_id,
         model_version=model_version,
         model_file=model_state_path,
+        backend=backend,
         input_channels=input_channels,
         num_classes=num_classes,
         class_names=class_names,
@@ -107,7 +123,7 @@ def save_edge_model_package(
         "model_name": model_name,
         "dataset_fingerprint": dataset_fingerprint,
         "class_names": list(class_names),
-        "framework": "pytorch",
+        "framework": framework,
     }
     if extra_metadata:
         metadata.update(extra_metadata)
@@ -134,4 +150,45 @@ def save_edge_model_package(
         edgeos_manifest_path=edgeos_manifest_path,
         manifest_path=manifest_path,
         signature_path=emitted_signature_path,
+    )
+
+
+def save_edge_model_package(
+    *,
+    output_dir: Path,
+    model_state_dict: Mapping[str, torch.Tensor],
+    model_name: str,
+    input_channels: int,
+    num_classes: int,
+    class_names: tuple[str, ...],
+    temperature: float,
+    abstention_threshold: float,
+    dataset_fingerprint: str,
+    model_id: str = "whirdetective.bearing.baseline",
+    model_version: str = "0.1.0",
+    extra_metadata: dict[str, Any] | None = None,
+    signing_key: str | None = None,
+    signing_key_env_var: str = "WHIRDETECTIVE_MANIFEST_SIGNING_KEY",
+) -> EdgeModelArtifactPaths:
+    """Persist trained model artifacts and integrity manifest for EdgeOS handoff."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    model_state_path = output_dir / "model_state_dict.pt"
+    torch.save(dict(model_state_dict), model_state_path)
+    return save_edge_model_blob_package(
+        output_dir=output_dir,
+        model_blob_path=model_state_path,
+        model_artifact_name="model_state_dict.pt",
+        backend="pytorch_state_dict",
+        model_name=model_name,
+        input_channels=input_channels,
+        num_classes=num_classes,
+        class_names=class_names,
+        temperature=temperature,
+        abstention_threshold=abstention_threshold,
+        dataset_fingerprint=dataset_fingerprint,
+        model_id=model_id,
+        model_version=model_version,
+        extra_metadata=extra_metadata,
+        signing_key=signing_key,
+        signing_key_env_var=signing_key_env_var,
     )

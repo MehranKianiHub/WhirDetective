@@ -8,6 +8,7 @@
     "model_id",
     "version",
     "backend",
+    "model_file",
     "sha256",
     "size_bytes",
     "input",
@@ -28,6 +29,10 @@
       "minLength": 1
     },
     "backend": {
+      "type": "string",
+      "minLength": 1
+    },
+    "model_file": {
       "type": "string",
       "minLength": 1
     },
