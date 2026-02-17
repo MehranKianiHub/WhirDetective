@@ -154,3 +154,60 @@ def test_build_paderborn_canonical_dataset_is_deterministic(
     assert first.split == second.split
     assert first.fingerprint == second.fingerprint
     assert len(first.source_files) == 3
+
+
+def test_build_paderborn_canonical_dataset_skips_malformed_entries(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    a1 = tmp_path / "K001.rar"
+    a2 = tmp_path / "KI01.rar"
+    a3 = tmp_path / "KA01.rar"
+    for archive in (a1, a2, a3):
+        archive.write_text("x", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "whirdetective.data.engine.list_paderborn_archives",
+        lambda _root: (a1, a2, a3),
+    )
+    monkeypatch.setattr(
+        "whirdetective.data.engine.list_paderborn_mat_entries",
+        lambda _archive: ("entry_bad.mat", "entry_good.mat"),
+    )
+    monkeypatch.setattr(
+        "whirdetective.data.engine.iter_paderborn_mat_payloads",
+        lambda _archive, entry_whitelist=None: (
+            ("entry_bad.mat", b"bad"),
+            ("entry_good.mat", b"good"),
+        ),
+    )
+
+    def _load_payload(
+        payload: bytes,
+        min_signal_length: int,
+        min_length_ratio: float,
+    ) -> dict[str, np.ndarray]:
+        del min_signal_length, min_length_ratio
+        if payload == b"bad":
+            raise ValueError("malformed entry")
+        return {
+            "vibration_1": np.arange(16, dtype=np.float64),
+            "phase_current_1": np.arange(16, dtype=np.float64) + 1.0,
+        }
+
+    monkeypatch.setattr(
+        "whirdetective.data.engine.load_paderborn_channels_from_mat_payload",
+        _load_payload,
+    )
+
+    projector = SensorSetProjector(ProjectionPolicy())
+    config = PaderbornBuildConfig(
+        root_dir=tmp_path,
+        window_size=8,
+        step_size=4,
+        split_seed=11,
+    )
+
+    built = build_paderborn_canonical_dataset(config=config, projector=projector)
+    assert len(built.samples) > 0
+    assert len(built.source_files) == 3

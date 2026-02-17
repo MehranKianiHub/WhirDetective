@@ -222,22 +222,30 @@ def build_paderborn_canonical_dataset(
             if payload is None:
                 continue
 
-            channels = load_paderborn_channels_from_mat_payload(
-                payload,
-                min_signal_length=config.min_signal_length,
-                min_length_ratio=config.min_length_ratio,
-            )
+            try:
+                channels = load_paderborn_channels_from_mat_payload(
+                    payload,
+                    min_signal_length=config.min_signal_length,
+                    min_length_ratio=config.min_length_ratio,
+                )
+            except Exception:
+                # Archive mirrors occasionally include malformed MAT entries; skip these
+                # so one bad file cannot block full-dataset build execution.
+                continue
             run_id = Path(entry_name).stem
-            run_samples = build_windowed_canonical_samples(
-                dataset="paderborn",
-                machine_id=archive_machine_id,
-                run_id=run_id,
-                label=label,
-                channel_signals=channels,
-                projector=projector,
-                window_size=config.window_size,
-                step_size=config.step_size,
-            )
+            try:
+                run_samples = build_windowed_canonical_samples(
+                    dataset="paderborn",
+                    machine_id=archive_machine_id,
+                    run_id=run_id,
+                    label=label,
+                    channel_signals=channels,
+                    projector=projector,
+                    window_size=config.window_size,
+                    step_size=config.step_size,
+                )
+            except Exception:
+                continue
             group_key = f"{archive_machine_id}:{run_id}"
             all_samples.extend(run_samples)
             all_group_ids.extend([group_key] * len(run_samples))
