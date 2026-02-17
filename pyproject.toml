@@ -29,6 +29,7 @@ dependencies = [
 [project.scripts]
 whirdetective-runner = "whirdetective.cli.runner:main"
 whirdetective-signoff = "whirdetective.cli.signoff:main"
+whirdetective-runtime-freeze = "whirdetective.cli.runtime_freeze:main"
 
 [project.optional-dependencies]
 dev = [
