@@ -197,7 +197,7 @@ The sliding window technique converts time‑series forecasting into supervised 
 
 The diagram below illustrates how a signal is segmented into overlapping windows. Each coloured box represents a window of fixed length. In practice, if a signal has length  $N$  samples and the window width is  $W$  with a step size  $S$ , then the number of windows is approximately  $\lfloor (N - W)/S \rfloor + 1$ .
 
-![](1.png)
+![](https://github.com/MehranKianiHub/WhirDetective/blob/main/1.png)
 
 In code, sliding window segmentation can be implemented with array slicing. For example:
 
