@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from subprocess import CompletedProcess
@@ -94,6 +95,15 @@ def test_main_pass_creates_canary_outputs(tmp_path: Path, monkeypatch: object) -
     backend_gate = next(g for g in report["gates"] if g["name"] == "edgeos_backend_compatibility_gate_passed")
     assert backend_gate["details"]["override_used"] is True
     assert (output_dir / "EDGEOS_STAGING_CANARY_COMMANDS.md").exists()
+    begin_payload = json.loads((output_dir / "command_payloads" / "ota_begin.json").read_text(encoding="utf-8"))
+    assert begin_payload["TRUST_ANCHOR"] == staging_canary._DEFAULT_OTA_TRUST_ANCHOR
+    assert begin_payload["TRUST_ANCHOR_ID"] == ""
+    expected_signature = hashlib.sha256(
+        f"edgeml-ota-signature-v1:{begin_payload['EXPECTED_SHA256'].split(':', 1)[1]}:{begin_payload['TRUST_ANCHOR']}".encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    assert begin_payload["SIGNATURE"] == expected_signature
 
 
 def test_main_fails_when_freeze_signoff_failed(tmp_path: Path) -> None:
@@ -170,3 +180,8 @@ def test_main_strict_passes_with_tflite_package_and_no_override(
     backend_gate = next(g for g in report["gates"] if g["name"] == "edgeos_backend_compatibility_gate_passed")
     assert backend_gate["passed"] is True
     assert backend_gate["details"]["override_used"] is False
+    begin_payload = json.loads(
+        (freeze_dir / "canary" / "cwru-tflite" / "command_payloads" / "ota_begin.json").read_text(encoding="utf-8")
+    )
+    assert begin_payload["SIGNATURE"]
+    assert begin_payload["TRUST_ANCHOR"] == staging_canary._DEFAULT_OTA_TRUST_ANCHOR

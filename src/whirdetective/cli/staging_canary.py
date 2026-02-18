@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import sys
@@ -20,6 +21,8 @@ _DEFAULT_RUNTIME_SUITES: tuple[str, ...] = (
     "ML_OTAUpdateTests",
     "ML_InferenceTests",
 )
+_DEFAULT_OTA_TRUST_ANCHOR = "bootctrl-edgeos-pilot-anchor-v1"
+_OTA_SIGNATURE_PREFIX = "edgeml-ota-signature-v1:"
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +106,33 @@ def build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Rollout nonce. Default uses UTC timestamp.",
+    )
+    parser.add_argument(
+        "--ota-trust-anchor",
+        type=str,
+        default=_DEFAULT_OTA_TRUST_ANCHOR,
+        help=(
+            "Inline trust-anchor material for ML_OTAUpdate signature verification "
+            "(used when --ota-trust-anchor-id is empty)."
+        ),
+    )
+    parser.add_argument(
+        "--ota-trust-anchor-id",
+        type=str,
+        default="",
+        help=(
+            "Optional trust-anchor ID to use with runtime trust-store lookup. "
+            "If set, leave inline trust-anchor empty unless explicit fallback is required."
+        ),
+    )
+    parser.add_argument(
+        "--ota-signature",
+        type=str,
+        default=None,
+        help=(
+            "Optional explicit OTA signature override. "
+            "Default: derive from model SHA-256 and trust anchor."
+        ),
     )
     parser.add_argument(
         "--chunk-size-bytes",
@@ -260,12 +290,29 @@ def run_canary_from_args(args: argparse.Namespace) -> CanaryArtifacts:
     command_payloads_dir = output_dir / "command_payloads"
     command_payloads_dir.mkdir(parents=True, exist_ok=True)
 
+    trust_anchor = str(args.ota_trust_anchor or "")
+    trust_anchor_id = str(args.ota_trust_anchor_id or "")
+    if not trust_anchor and not trust_anchor_id:
+        raise ValueError(
+            "Either --ota-trust-anchor or --ota-trust-anchor-id must be provided "
+            "for secure ML_OTAUpdate commit."
+        )
+    signature = str(args.ota_signature or _derive_ota_signature(model_sha256=model_sha256, trust_anchor=trust_anchor))
+    if not signature:
+        raise ValueError(
+            "Could not derive OTA signature. "
+            "Provide --ota-signature or non-empty --ota-trust-anchor."
+        )
+
     begin_payload = {
         "COMMAND": 0,
         "MODEL_ID": manifest_model_id,
         "VERSION": manifest_version,
         "EXPECTED_SIZE": model_size_bytes,
         "EXPECTED_SHA256": f"sha256:{model_sha256}",
+        "SIGNATURE": signature,
+        "TRUST_ANCHOR": trust_anchor,
+        "TRUST_ANCHOR_ID": trust_anchor_id,
         "SOURCE_URI": args.source_uri,
         "TRANSPORT_SECURE": True,
         "NONCE": nonce,
@@ -299,6 +346,9 @@ def run_canary_from_args(args: argparse.Namespace) -> CanaryArtifacts:
             source_uri=args.source_uri,
             expected_size=model_size_bytes,
             expected_sha256=model_sha256,
+            signature=signature,
+            trust_anchor=trust_anchor,
+            trust_anchor_id=trust_anchor_id,
             backend=manifest_backend,
             runtime_suites=runtime_suites,
             forte_test_path=forte_test_path,
@@ -336,6 +386,9 @@ def run_canary_from_args(args: argparse.Namespace) -> CanaryArtifacts:
         "ota_inputs": {
             "nonce": nonce,
             "source_uri": args.source_uri,
+            "signature": signature,
+            "trust_anchor": trust_anchor,
+            "trust_anchor_id": trust_anchor_id,
             "command_payload_dir": str(command_payloads_dir),
             "chunk_manifest_path": str(command_payloads_dir / "chunk_manifest.json"),
         },
@@ -629,6 +682,14 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def _derive_ota_signature(*, model_sha256: str, trust_anchor: str) -> str:
+    if not model_sha256 or not trust_anchor:
+        return ""
+    digest = model_sha256.strip().lower()
+    material = f"{_OTA_SIGNATURE_PREFIX}{digest}:{trust_anchor}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
 def _build_commands_markdown(
     *,
     track: str,
@@ -639,6 +700,9 @@ def _build_commands_markdown(
     source_uri: str,
     expected_size: int,
     expected_sha256: str,
+    signature: str,
+    trust_anchor: str,
+    trust_anchor_id: str,
     backend: str,
     runtime_suites: tuple[str, ...],
     forte_test_path: Path,
@@ -672,6 +736,9 @@ def _build_commands_markdown(
                 "VERSION": version,
                 "EXPECTED_SIZE": expected_size,
                 "EXPECTED_SHA256": f"sha256:{expected_sha256}",
+                "SIGNATURE": signature,
+                "TRUST_ANCHOR": trust_anchor,
+                "TRUST_ANCHOR_ID": trust_anchor_id,
                 "SOURCE_URI": source_uri,
                 "TRANSPORT_SECURE": True,
                 "NONCE": nonce,
