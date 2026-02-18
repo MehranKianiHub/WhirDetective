@@ -473,6 +473,14 @@ Conclusion
 
 This document provided a step‑by‑step introduction to Python, NumPy, signal features, sliding windows, neural networks, PyTorch and the WhirDetective codebase. Citations were included to emphasise definitions and formulas. By following the examples and exploring the code, you should be able to understand the entire WhirDetective pipeline. The combination of careful feature engineering and a simple convolutional neural network demonstrates how domain knowledge and machine‑learning techniques can be integrated to solve a real‑world industrial problem.
 
-The report includes citations from credible sources throughout, ensuring that definitions and formulas are well-supported. Please start the repository if you find this document and codebase helpful!
+The document includes citations from credible sources throughout, ensuring that definitions and formulas are well-supported.
+
+<p align="center">
+  <strong>⭐ Star us on GitHub if you find this project useful! ⭐</strong>
+</p>
+
+<p align="center">
+  Made with ❤️ 
+</p>
 
 ---
