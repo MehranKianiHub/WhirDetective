@@ -1,6 +1,6 @@
 # WhirDetective
 
-WhirDetective is a Python project for industrial bearing fault diagnostics with a safety-first release workflow. It combines data engineering, feature projection, baseline ML training, calibration, KPI gating, and deployment packaging for controlled runtime environments.
+WhirDetective is a Python project for industrial bearing fault diagnostics. It combines data engineering, feature projection, baseline ML training, calibration, KPI gating, and deployment packaging for controlled runtime environments.
 
 ## What It Does
 
