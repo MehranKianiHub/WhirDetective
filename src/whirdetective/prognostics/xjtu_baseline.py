@@ -385,8 +385,11 @@ def _evaluate_targets(
 def _spearman(y_true: FloatArray, y_pred: FloatArray) -> float:
     if y_true.size == 0 or y_pred.size == 0:
         raise ValueError("spearman inputs must be non-empty")
-    rank_true = np.argsort(np.argsort(y_true)).astype(np.float64)
-    rank_pred = np.argsort(np.argsort(y_pred)).astype(np.float64)
+    if y_true.shape != y_pred.shape:
+        raise ValueError("spearman inputs must have matching shapes")
+
+    rank_true = _average_ranks(y_true)
+    rank_pred = _average_ranks(y_pred)
     std_true = float(np.std(rank_true))
     std_pred = float(np.std(rank_pred))
     if std_true < 1e-12 or std_pred < 1e-12:
@@ -394,6 +397,24 @@ def _spearman(y_true: FloatArray, y_pred: FloatArray) -> float:
     rank_true = (rank_true - np.mean(rank_true)) / std_true
     rank_pred = (rank_pred - np.mean(rank_pred)) / std_pred
     return float(np.mean(rank_true * rank_pred))
+
+
+def _average_ranks(values: FloatArray) -> FloatArray:
+    if values.ndim != 1:
+        raise ValueError("rank inputs must be 1D")
+    order = np.argsort(values, kind="mergesort")
+    sorted_values = values[order]
+    ranks = np.empty(values.shape[0], dtype=np.float64)
+
+    start = 0
+    while start < sorted_values.size:
+        end = start + 1
+        while end < sorted_values.size and sorted_values[end] == sorted_values[start]:
+            end += 1
+        average_rank = (start + end - 1) / 2.0
+        ranks[order[start:end]] = average_rank
+        start = end
+    return ranks
 
 
 def _mean_group_spearman(records: tuple[_Record, ...], predictions: FloatArray) -> float:

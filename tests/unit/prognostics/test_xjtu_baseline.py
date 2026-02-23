@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from whirdetective.data.adapters.xjtu_sy import XjtuCsvEntry
@@ -91,3 +92,17 @@ def test_run_xjtu_prognostics_baseline_fails_with_no_records(
     )
     assert result.evaluation.passed is False
     assert "no_xjtu_records_collected" in result.evaluation.failed_checks
+
+
+def test_spearman_tie_ranks_are_stable_under_within_tie_swaps() -> None:
+    from whirdetective.prognostics.xjtu_baseline import _spearman
+
+    y_pred = np.asarray([0, 0, 1, 1, 2, 2], dtype=np.float64)
+    y_true_order_a = np.asarray([1, 2, 3, 4, 5, 6], dtype=np.float64)
+    y_true_order_b = np.asarray([2, 1, 4, 3, 5, 6], dtype=np.float64)
+
+    score_a = _spearman(y_true_order_a, y_pred)
+    score_b = _spearman(y_true_order_b, y_pred)
+
+    assert score_a == pytest.approx(score_b, abs=1e-12)
+    assert score_a < 1.0
