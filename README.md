@@ -225,3 +225,20 @@ For signing, the default environment variable is:
 
 - Current package version: `0.1.0`
 - Python package name: `whirdetective`
+
+## 📞 Contact
+
+- 🌐 [Website](https://bootctrl.com/)
+- 📧 [Email](mailto:mehran.kiani@bootctrl.com)
+- 💬 [Discussions](https://github.com/MehranKianiHub/BootCtrl-EdgeOS/discussions)
+- 🐛 [Issues](https://github.com/MehranKianiHub/BootCtrl-EdgeOS/issues)
+
+<p align="center">
+  <strong>⭐ Star us on GitHub if you find this project useful! ⭐</strong>
+</p>
+
+<p align="center">
+  Made with ❤️ by the industrial automation and ML community
+</p>
+
+---
