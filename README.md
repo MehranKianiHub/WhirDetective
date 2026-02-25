@@ -52,7 +52,7 @@ WhirDetective currently includes workflows around these local dataset roots:
 - `data/raw/ims/`
 - `data/raw/femto_st/`
 
-Notes:
+Important notes:
 - The awesome-bearing-dataset repository is an index, not a single dataset download.
 - Organize raw files under `data/raw/...` and generated outputs under `data/processed/` or `artifacts/`.
 
