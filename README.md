@@ -221,11 +221,6 @@ WhirDetective treats ML as advisory inside deterministic operational controls.
 For signing, the default environment variable is:
 - `WHIRDETECTIVE_MANIFEST_SIGNING_KEY`
 
-## Project Status
-
-- Current package version: `0.1.0`
-- Python package name: `whirdetective`
-
 ## 📞 Contact
 
 - 🌐 [Website](https://bootctrl.com/)
